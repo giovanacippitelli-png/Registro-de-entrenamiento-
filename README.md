@@ -13,8 +13,10 @@ peso · reps), pensada para usar solo desde el celular.
   Si repite, toca el número de serie (✓). Si cambia, ajusta con **+ / −**
   (el paso del peso se configura, por defecto ±2,5 kg) o escribe el valor.
   Se pueden sumar series y ejercicios extra solo para ese día.
-- **Varias sesiones abiertas a la vez** (por ejemplo, dos alumnos entrenando
-  juntos); aparecen arriba en el inicio.
+- **Varios alumnos a la vez**: arriba de la sesión hay una barra con todos los
+  que están entrenando; se pasa de uno a otro con un toque (cada uno queda
+  donde se lo dejó) y con **+ Sumar** se agrega otro sin cerrar nada. Al
+  terminar una sesión, la app pasa al siguiente alumno que sigue entrenando.
 - **Progreso por ejercicio**: peso máximo, volumen (kg × reps) y una tabla con
   el mismo formato que la planilla en papel.
 - **Respaldo**: descarga o comparte (WhatsApp, Drive, mail) un archivo `.json`
