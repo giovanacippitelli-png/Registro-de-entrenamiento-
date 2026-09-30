@@ -245,8 +245,44 @@
   table.hist th{font-size:12px;color:var(--muted);font-weight:600;}
   table.hist td:first-child,table.hist th:first-child{text-align:left;color:var(--muted);position:sticky;left:0;background:var(--panel);}
 
+
+  /* Formularios */
+  .campos{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+  .campos > label{grid-column:1 / -1;}
+  .campos > label.medio{grid-column:auto;min-width:0;}
+  .sub-sec{grid-column:1 / -1;font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:700;margin-top:4px;}
+  .elegir .grupo,.grupo{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:700;padding:10px 14px 4px;background:var(--panel-2);}
+  .card > .grupo{padding:0;background:none;}
+  .li.crear .av{background:var(--primary);color:var(--on-primary);}
+  .chip-x{border:0;background:transparent;color:var(--muted);font-size:18px;line-height:1;margin:0 -6px 0 6px;padding:0 4px;cursor:pointer;}
+  .lnk{border:0;background:none;color:var(--primary);font:inherit;font-weight:600;padding:0;cursor:pointer;text-decoration:underline;}
+
+  /* Ficha: datos personales y último entrenamiento */
+  .datos{display:grid;grid-template-columns:repeat(3,1fr);gap:10px 8px;margin-top:12px;}
+  .datos > div{min-width:0;}
+  .datos span{display:block;font-size:12px;color:var(--muted);}
+  .datos b{display:block;font-size:16px;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .datos small{display:block;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;}
+  .card.ultimo{display:flex;flex-direction:column;gap:10px;}
+  .card.ultimo .t{display:flex;flex-direction:column;}
+  .card.ultimo .t b{font-size:18px;}
+  a.card.ultimo.live{flex-direction:row;align-items:center;text-decoration:none;color:inherit;border-color:var(--primary);background:var(--primary-soft);}
+  a.card.ultimo.live .t{flex:1;}
+
+  /* Detalles por ejercicio en la sesión */
+  .det{display:flex;gap:6px;flex-wrap:wrap;margin:2px 0 8px;}
+  .dchip{min-height:34px;padding:0 10px;border-radius:17px;border:1px dashed var(--border);background:var(--panel);color:var(--muted);font:inherit;font-size:13px;cursor:pointer;}
+  .dchip.on{border-style:solid;border-color:var(--primary);color:var(--primary);background:var(--primary-soft);font-weight:600;}
+  .dchip.dolor{border-style:solid;border-color:var(--danger);color:var(--danger);background:var(--danger-soft);font-weight:600;}
+  .det-txt{font-size:13px;margin:-2px 0 8px;color:var(--text);}
+  .det-txt.dolor,.txt-dolor{color:var(--danger);}
+  .aviso-dolor{font-size:13px;color:var(--danger);background:var(--danger-soft);border-radius:10px;padding:6px 10px;margin:0 0 8px;}
+  .dolor-dot{width:10px;height:10px;border-radius:50%;flex:none;display:inline-block;background:var(--danger);margin-right:6px;}
+  .dolor-dot.leve{opacity:.45;}
+  .dolor-dot.moderado{opacity:.75;}
+  table.hist tr.extra td{color:var(--muted);font-size:13px;}
   /* Diálogo */
-  dialog{border:0;border-radius:18px;padding:0;width:min(92vw,480px);background:var(--panel);color:var(--text);box-shadow:0 10px 40px rgba(0,0,0,.3);}
+  dialog{border:0;border-radius:18px;padding:0;width:min(92vw,480px);max-height:88dvh;overflow-y:auto;background:var(--panel);color:var(--text);box-shadow:0 10px 40px rgba(0,0,0,.3);}
   dialog::backdrop{background:rgba(10,12,30,.45);}
   .dlg{padding:18px;display:flex;flex-direction:column;gap:12px;}
   .dlg h2{margin:0;font-size:19px;}
@@ -352,7 +388,7 @@ const Store = {
   }
 };
 
-const estadoVacio = () => ({ v: 1, alumnos: [], sesiones: [], plantillas: [], cfg: { paso: 2.5 }, ultimoRespaldo: null });
+const estadoVacio = () => ({ v: 1, alumnos: [], sesiones: [], plantillas: [], biblioteca: [], cfg: { paso: 2.5 }, ultimoRespaldo: null });
 let S = estadoVacio();
 let guardarT = null;
 function guardar(){
@@ -369,8 +405,11 @@ window.addEventListener('pagehide', () => { if (guardarT) guardarYa(); });
 function normalizar(d){
   const s = Object.assign(estadoVacio(), d || {});
   s.cfg = Object.assign({ paso: 2.5 }, s.cfg || {});
-  for (const k of ['alumnos', 'sesiones', 'plantillas']) if (!Array.isArray(s[k])) s[k] = [];
-  for (const a of s.alumnos) if (!Array.isArray(a.rutinas)) a.rutinas = [];
+  for (const k of ['alumnos', 'sesiones', 'plantillas', 'biblioteca']) if (!Array.isArray(s[k])) s[k] = [];
+  for (const a of s.alumnos) {
+    if (!Array.isArray(a.rutinas)) a.rutinas = [];
+    if (!Array.isArray(a.mediciones)) a.mediciones = [];
+  }
   return s;
 }
 
@@ -387,7 +426,7 @@ function ultimoDe(alumnoId, nombre, excluirId, hastaFecha){
   for (const s of sesionesDe(alumnoId)) {
     if (s.id === excluirId || (hastaFecha && s.fecha > hastaFecha)) continue;
     const it = s.items.find(i => clave(i.nombre) === k && hechas(i).length);
-    if (it) return { fecha: s.fecha, sets: hechas(it) };
+    if (it) return { fecha: s.fecha, sets: hechas(it), it };
   }
   return null;
 }
@@ -404,12 +443,18 @@ function formulario({ titulo, campos = [], ok = 'Guardar', peligro, html = '' })
   return new Promise(res => {
     dlg.innerHTML = `<form class="dlg" novalidate>
       <h2>${esc(titulo)}</h2>${html}
-      ${campos.map(c => {
-        const lab = `<label>${esc(c.etiqueta)}`;
+      <div class="campos">${campos.map(c => {
+        if (c.seccion) return `<div class="sub-sec">${esc(c.seccion)}</div>`;
+        const lab = `<label class="${c.medio ? 'medio' : ''}">${esc(c.etiqueta)}`;
         if (c.tipo === 'textarea') return `${lab}<textarea class="in" name="${c.nombre}" placeholder="${esc(c.ph || '')}">${esc(c.valor || '')}</textarea></label>`;
-        if (c.tipo === 'select') return `${lab}<select class="in" name="${c.nombre}">${c.opciones}</select></label>`;
-        return `${lab}<input class="in" name="${c.nombre}" type="${c.tipo || 'text'}" ${c.modo ? `inputmode="${c.modo}"` : ''} value="${esc(c.valor ?? '')}" placeholder="${esc(c.ph || '')}" autocomplete="off"></label>`;
-      }).join('')}
+        if (c.tipo === 'select') {
+          const ops = typeof c.opciones === 'string' ? c.opciones
+            : c.opciones.map(([v, t]) => `<option value="${esc(v)}" ${String(v) === String(c.valor ?? '') ? 'selected' : ''}>${esc(t)}</option>`).join('');
+          return `${lab}<select class="in" name="${c.nombre}">${ops}</select></label>`;
+        }
+        const dl = c.lista ? `<datalist id="dl-${c.nombre}">${c.lista.map(v => `<option value="${esc(v)}">`).join('')}</datalist>` : '';
+        return `${lab}<input class="in" name="${c.nombre}" type="${c.tipo || 'text'}" ${c.modo ? `inputmode="${c.modo}"` : ''} ${c.lista ? `list="dl-${c.nombre}"` : ''} value="${esc(c.valor ?? '')}" placeholder="${esc(c.ph || '')}" autocomplete="off">${dl}</label>`;
+      }).join('')}</div>
       <div class="btns">
         ${peligro ? `<button type="button" class="btn danger" data-v="peligro">${esc(peligro)}</button>` : ''}
         <span class="sp"></span>
@@ -423,6 +468,7 @@ function formulario({ titulo, campos = [], ok = 'Guardar', peligro, html = '' })
       e.preventDefault();
       const d = {};
       for (const c of campos) {
+        if (c.seccion) continue;
         d[c.nombre] = f.elements[c.nombre].value.trim();
         if (c.requerido && !d[c.nombre]) { f.elements[c.nombre].focus(); return; }
       }
@@ -432,19 +478,33 @@ function formulario({ titulo, campos = [], ok = 'Guardar', peligro, html = '' })
     dlg.oncancel = e => { e.preventDefault(); fin(null); };
     dlg.showModal();
     const primero = f.querySelector('input.in, textarea.in');
-    if (primero && campos[0]?.foco !== false) primero.focus();
+    if (primero && campos.find(c => !c.seccion)?.foco !== false) primero.focus();
   });
 }
 
-// Lista para elegir una opción (alumno, día de rutina…), con buscador opcional.
-function elegir({ titulo, items, buscar }){
+// Lista para elegir una opción (alumno, día de rutina, ejercicio…), con buscador opcional.
+// Con `crear`, si lo buscado no existe ofrece crearlo (devuelve 'nuevo:<texto>').
+function elegir({ titulo, items, buscar, crear, vacio = 'No hay opciones.' }){
   return new Promise(res => {
-    const fila = x => `<button type="button" class="li" data-id="${x.id}">
+    const fila = x => `<button type="button" class="li" data-id="${esc(x.id)}">
       ${x.av ? `<span class="av">${esc(x.av)}</span>` : ''}
       <span class="t"><b>${esc(x.t)}</b>${x.sub ? `<span>${esc(x.sub)}</span>` : ''}</span></button>`;
+    const pintarLista = (texto = '') => {
+      const k = clave(texto);
+      const vis = items.filter(x => !k || clave(x.t).includes(k));
+      let html = '', grupo = null;
+      for (const x of vis) {
+        if (x.grupo && x.grupo !== grupo) { grupo = x.grupo; html += `<div class="grupo">${esc(grupo)}</div>`; }
+        html += fila(x);
+      }
+      if (crear && k && !items.some(x => clave(x.t) === k))
+        html = `<button type="button" class="li crear" data-id="nuevo:${esc(texto.trim())}"><span class="av">+</span>
+          <span class="t"><b>Crear “${esc(texto.trim())}”</b><span>Se agrega a la biblioteca</span></span></button>` + html;
+      return html || `<div class="empty">${k ? 'Sin resultados.' : esc(vacio)}</div>`;
+    };
     dlg.innerHTML = `<div class="dlg elegir"><h2>${esc(titulo)}</h2>
-      ${buscar ? '<input class="in" type="search" placeholder="Buscar…" autocomplete="off">' : ''}
-      <div class="list">${items.map(fila).join('') || '<div class="empty">No hay alumnos cargados.</div>'}</div>
+      ${buscar ? `<input class="in" type="search" placeholder="${crear ? 'Buscar o escribir uno nuevo…' : 'Buscar…'}" autocomplete="off">` : ''}
+      <div class="list">${pintarLista()}</div>
       <div class="btns"><span class="sp"></span><button type="button" class="btn ghost" data-v>Cancelar</button></div></div>`;
     let listo = false;
     const fin = v => { if (listo) return; listo = true; dlg.close(); res(v); };
@@ -452,13 +512,76 @@ function elegir({ titulo, items, buscar }){
     lista.onclick = e => { const b = e.target.closest('[data-id]'); if (b) fin(b.dataset.id); };
     dlg.querySelector('[data-v]').onclick = () => fin(null);
     const q = dlg.querySelector('input');
-    if (q) q.oninput = () => {
-      const k = clave(q.value);
-      lista.innerHTML = items.filter(x => !k || clave(x.t).includes(k)).map(fila).join('') || '<div class="empty">Sin resultados.</div>';
-    };
+    if (q) q.oninput = () => { lista.innerHTML = pintarLista(q.value); };
     dlg.oncancel = e => { e.preventDefault(); fin(null); };
     dlg.showModal();
   });
+}
+
+/* ---------- Biblioteca de ejercicios ---------- */
+const BIBLIOTECA = [
+  ['Tren inferior', ['Peso muerto', 'Hip thrust', 'Sentadilla', 'Sentadilla búlgara', 'Sillón de cuádriceps', 'Curl isquiotibial', 'Hip abducción', 'Pantorrillas']],
+  ['Tren superior', ['Pull down', 'Remo Hammer', 'Remo neutro', 'Pull over', 'Vuelos', 'Face pull']]
+];
+// Ejercicios de la biblioteca base + los propios (creados a mano o usados en rutinas).
+function biblioteca(){
+  const vistos = new Set(), out = [];
+  const add = (nombre, grupo) => { const k = clave(nombre); if (!k || vistos.has(k)) return; vistos.add(k); out.push({ id: nombre.trim(), t: nombre.trim(), grupo }); };
+  for (const [g, ns] of BIBLIOTECA) ns.forEach(n => add(n, g));
+  const propios = [...S.biblioteca, ...nombresEjercicios()].sort((a, b) => a.localeCompare(b, 'es'));
+  propios.forEach(n => add(n, 'Mis ejercicios'));
+  return out;
+}
+async function elegirEjercicio(titulo = 'Agregar ejercicio'){
+  const id = await elegir({ titulo, items: biblioteca(), buscar: true, crear: true });
+  if (!id) return null;
+  if (id.startsWith('nuevo:')) {
+    const n = id.slice(6).trim();
+    if (!biblioteca().some(x => clave(x.t) === clave(n))) { S.biblioteca.push(n); guardar(); }
+    return n;
+  }
+  return id;
+}
+
+/* ---------- Medidas corporales ---------- */
+const MEDIDAS = [
+  ['peso', 'Peso', 'kg'], ['grasa', '% grasa', '%'], ['cintura', 'Cintura', 'cm'], ['cadera', 'Cadera', 'cm'],
+  ['pecho', 'Pecho', 'cm'], ['brazo', 'Brazo', 'cm'], ['muslo', 'Muslo', 'cm'], ['pantorrilla', 'Pantorrilla', 'cm']
+];
+const medicionesDe = a => (a.mediciones || []).slice().sort((x, y) => x.fecha.localeCompare(y.fecha));
+// Último valor cargado de una medida y su cambio desde el primero.
+function medida(a, k){
+  const ms = medicionesDe(a).filter(m => m[k] != null);
+  if (!ms.length) return null;
+  const u = ms[ms.length - 1];
+  return { v: u[k], fecha: u.fecha, dif: ms.length > 1 ? u[k] - ms[0][k] : null };
+}
+const fDif = d => d == null || Math.abs(d) < 0.05 ? '' : `${d > 0 ? '+' : '−'}${fNum(Math.abs(d))}`;
+function imc(a){
+  const p = medida(a, 'peso'), h = num(a.altura);
+  return p && h ? p.v / ((h / 100) ** 2) : null;
+}
+const OBJETIVOS = ['Hipertrofia', 'Fuerza', 'Bajar de peso', 'Recomposición corporal', 'Salud general', 'Rendimiento deportivo', 'Rehabilitación'];
+const FRECUENCIAS = [['', '—'], ...[1, 2, 3, 4, 5, 6, 7].map(n => [n, `${n}× por semana`])];
+const DOLOR = [['', 'Sin dolor'], ['leve', 'Leve'], ['moderado', 'Moderado'], ['fuerte', 'Fuerte']];
+const DESCANSOS = ['30 s', '45 s', '60 s', '90 s', '2 min', '3 min', '4 min', '5 min'];
+
+function camposAlumno(a = {}, nuevo){
+  return [
+    { nombre: 'nombre', etiqueta: 'Nombre', requerido: true, valor: a.nombre, ph: 'Nombre y apellido', foco: nuevo },
+    { nombre: 'objetivo', etiqueta: 'Objetivo', valor: a.objetivo, lista: OBJETIVOS, ph: 'Elegí o escribí' },
+    { nombre: 'frecuencia', etiqueta: 'Frecuencia semanal', tipo: 'select', opciones: FRECUENCIAS, valor: a.frecuencia ?? '', medio: true },
+    { nombre: 'inicio', etiqueta: 'Fecha de inicio', tipo: 'date', valor: a.inicio || (nuevo ? hoy() : ''), medio: true },
+    { nombre: 'altura', etiqueta: 'Altura (cm)', modo: 'decimal', valor: fNum(num(a.altura)), medio: true },
+    ...(nuevo ? [{ nombre: 'peso', etiqueta: 'Peso (kg)', modo: 'decimal', medio: true }] : []),
+    { nombre: 'notas', etiqueta: 'Notas', tipo: 'textarea', valor: a.notas, ph: 'Lesiones, patologías, preferencias, horarios…' }
+  ];
+}
+function aplicarAlumno(a, d){
+  a.nombre = d.nombre; a.objetivo = d.objetivo; a.notas = d.notas;
+  a.frecuencia = d.frecuencia ? +d.frecuencia : null;
+  a.inicio = d.inicio || null;
+  a.altura = num(d.altura);
 }
 
 /* ---------- Router ---------- */
@@ -475,6 +598,7 @@ function pintar(){
   if (p[0] === 'a' && p[1] && !p[2]) v = vAlumno(p[1]);
   else if (p[0] === 'a' && p[2] === 'r' && p[3]) v = vRutina(p[1], p[3]);
   else if (p[0] === 'a' && p[2] === 'p' && p[3]) v = vProgreso(p[1], decodeURIComponent(p[3]));
+  else if (p[0] === 'a' && p[2] === 'm') v = vMedidas(p[1]);
   else if (p[0] === 's' && p[1]) v = vSesion(p[1]);
   else if (p[0] === 'ajustes') v = vAjustes();
   else if (!p.length) v = vInicio();
@@ -559,21 +683,47 @@ function vAlumno(id){
   const a = alumno(id);
   if (!a) return null;
   const ses = sesionesDe(id);
+  const ult = ses[0];
   const ultPorRutina = {};
   for (const s of ses) if (!ultPorRutina[s.rutinaId]) ultPorRutina[s.rutinaId] = s.fecha;
   const ejs = new Map();
   for (const s of ses) for (const it of s.items) if (hechas(it).length && !ejs.has(clave(it.nombre))) ejs.set(clave(it.nombre), it.nombre);
   const abierta = abiertas().find(s => s.alumnoId === a.id);
+  const peso = medida(a, 'peso'), im = imc(a);
+  const datos = [
+    ['Frecuencia', a.frecuencia ? `${a.frecuencia}× semana` : '—'],
+    ['Inicio', a.inicio ? fFecha(a.inicio) : '—', a.inicio ? haceDias(a.inicio).replace('hace ', '') : ''],
+    ['Altura', a.altura ? `${fNum(a.altura)} cm` : '—'],
+    ['Peso', peso ? `${fNum(peso.v)} kg` : '—', peso && peso.dif != null ? `${fDif(peso.dif) || '='} kg` : ''],
+    ['IMC', im ? fNum(Math.round(im * 10) / 10) : '—'],
+    ['Sesiones', ses.length]
+  ];
+  const molestias = [];
+  for (const s of ses) for (const it of s.items) if (it.dolor) molestias.push({ s, it });
+  const ms = medicionesDe(a);
 
   return barra(a.nombre, { atras: '/', accion: `<button class="icon-btn" data-act="editarAlumno" data-a="${a.id}" aria-label="Editar datos">${I.edit}</button>` }) + `
-    <div class="card perfil">
-      <div class="av">${esc(iniciales(a.nombre))}</div>
-      <div class="t">
-        <div class="obj">${a.objetivo ? esc(a.objetivo) : '<span class="muted">Sin objetivo cargado</span>'}</div>
-        <div class="small muted">${ses.length} ${ses.length === 1 ? 'sesión' : 'sesiones'}${ses[0] ? ` · última ${haceDias(ses[0].fecha)}` : ''}</div>
-        ${a.notas ? `<div class="notas">${esc(a.notas)}</div>` : ''}
+    <div class="card">
+      <div class="perfil">
+        <div class="av">${esc(iniciales(a.nombre))}</div>
+        <div class="t">
+          <div class="obj">${a.objetivo ? esc(a.objetivo) : '<span class="muted">Sin objetivo cargado</span>'}</div>
+          ${a.notas ? `<div class="notas">${esc(a.notas)}</div>` : ''}
+        </div>
       </div>
+      <div class="datos">${datos.map(([t, v, s]) => `<div><span>${t}</span><b>${esc(v)}</b>${s ? `<small>${esc(s)}</small>` : ''}</div>`).join('')}</div>
     </div>
+
+    ${abierta ? `<a class="card ultimo live" href="#/s/${abierta.id}">
+        <div class="t"><span class="small muted">Entrenando ahora</span><b>${esc(abierta.rutinaNombre)}</b></div>
+        <span class="btn primary">Continuar</span></a>`
+      : ult ? `<div class="card ultimo">
+        <div class="t"><span class="small muted">Último entrenamiento</span>
+          <b>${esc(ult.rutinaNombre)} · ${fFecha(ult.fecha)}</b>
+          <span class="small muted">${haceDias(ult.fecha)} · ${ult.items.length} ejercicios</span></div>
+        <button class="btn primary block big" data-act="repetir" data-a="${a.id}">Repetir último entrenamiento</button>
+        <p class="small muted" style="margin:6px 0 0">Arranca con los mismos ejercicios, series y pesos; se modifica en el momento.</p>
+      </div>` : ''}
 
     <h2 class="sec">Rutina</h2>
     ${a.rutinas.map(r => `
@@ -581,9 +731,25 @@ function vAlumno(id){
         <div class="t"><b>${esc(r.nombre)}</b>
           <span>${r.ejercicios.length} ejercicios${ultPorRutina[r.id] ? ` · última ${fFecha(ultPorRutina[r.id])}` : ''}</span></div>
         <a class="btn ghost sm" href="#/a/${a.id}/r/${r.id}">Editar</a>
-        <button class="btn primary" data-act="entrenar" data-a="${a.id}" data-r="${r.id}">${abierta?.rutinaId === r.id ? 'Continuar' : 'Entrenar'}</button>
+        <button class="btn ${ult && !abierta ? 'ghost' : 'primary'}" data-act="entrenar" data-a="${a.id}" data-r="${r.id}">${abierta?.rutinaId === r.id ? 'Continuar' : 'Entrenar'}</button>
       </div>`).join('') || '<div class="card muted small">Todavía no tiene días de rutina. Agregá el primero.</div>'}
     <button class="btn ghost block" data-act="nuevoDia" data-a="${a.id}">${I.plus} Agregar día de rutina</button>
+
+    <h2 class="sec">Medidas corporales</h2>
+    <div class="card">
+      ${ms.length ? `<div class="datos">${MEDIDAS.map(([k, t, u]) => { const m = medida(a, k); return m ? `<div><span>${t}</span><b>${fNum(m.v)} ${u}</b>${m.dif != null ? `<small>${fDif(m.dif) || '='} ${u}</small>` : ''}</div>` : ''; }).join('')}</div>
+        <p class="small muted" style="margin:10px 0 0">Última medición: ${fFecha(ms[ms.length - 1].fecha)} · ${ms.length} ${ms.length === 1 ? 'medición' : 'mediciones'}</p>`
+        : '<p class="small muted" style="margin:0">Todavía no hay medidas cargadas.</p>'}
+      <div class="row" style="margin-top:10px">
+        <button class="btn primary sm" data-act="nuevaMedicion" data-a="${a.id}">${I.plus} Nueva medición</button>
+        ${ms.length ? `<a class="btn ghost sm" href="#/a/${a.id}/m">Ver historial</a>` : ''}
+      </div>
+    </div>
+
+    ${molestias.length ? `<h2 class="sec">Dolor / molestias registradas</h2>
+      <div class="list">${molestias.slice(0, 6).map(({ s, it }) => `<a class="li" href="#/s/${s.id}">
+        <span class="dolor-dot ${esc(it.dolor)}"></span>
+        <div class="t"><b>${esc(it.nombre)} · ${esc(it.dolor)}</b><span>${fFecha(s.fecha)}${it.dolorNota ? ' · ' + esc(it.dolorNota) : ''}</span></div>${I.chev}</a>`).join('')}</div>` : ''}
 
     ${ejs.size ? `<h2 class="sec">Progreso por ejercicio</h2>
       <div class="chips">${[...ejs].map(([k, n]) => `<a class="chip" href="#/a/${a.id}/p/${encodeURIComponent(k)}">${esc(n)}</a>`).join('')}</div>` : ''}
@@ -594,6 +760,31 @@ function vAlumno(id){
         return `<a class="li" href="#/s/${s.id}"><div class="t"><b>${fFecha(s.fecha)} · ${esc(s.rutinaNombre)}</b>
           <span>${s.items.length} ejercicios · ${n} series${s.notas ? ' · ' + esc(s.notas) : ''}</span></div>${I.chev}</a>`;
       }).join('')}</div>` : ''}`;
+}
+
+/* ---------- Vista: historial de medidas ---------- */
+function vMedidas(aid){
+  const a = alumno(aid);
+  if (!a) return null;
+  const ms = medicionesDe(a);
+  if (!ms.length) return barra('Medidas', { atras: `/a/${aid}`, sub: a.nombre }) + '<div class="empty">Todavía no hay medidas cargadas.</div>';
+  const usadas = MEDIDAS.filter(([k]) => ms.some(m => m[k] != null));
+  graficos = [];
+  const pesos = ms.filter(m => m.peso != null).map(m => ({ f: m.fecha, y: m.peso }));
+  const cint = ms.filter(m => m.cintura != null).map(m => ({ f: m.fecha, y: m.cintura }));
+  const g = [pesos.length > 1 ? grafico('Peso', 'kg', pesos) : '', cint.length > 1 ? grafico('Cintura', 'cm', cint) : ''].join('');
+  tras.push(activarGraficos);
+  const cols = ms.slice().reverse();
+  return barra('Medidas', { atras: `/a/${aid}`, sub: a.nombre, accion: `<button class="icon-btn" data-act="nuevaMedicion" data-a="${a.id}" aria-label="Nueva medición">${I.plus}</button>` }) + g + `
+    <div class="card">
+      <div class="tbl-wrap"><table class="hist">
+        <thead><tr><th></th>${cols.map(m => `<th><button class="lnk" data-act="editarMedicion" data-a="${a.id}" data-m="${m.id}">${fFecha(m.fecha)}</button></th>`).join('')}</tr></thead>
+        <tbody>${usadas.map(([k, t, u]) => `<tr><td>${t} <span class="muted">(${u})</span></td>${cols.map(m => `<td>${fNum(m[k])}</td>`).join('')}</tr>`).join('')}
+          ${a.altura && ms.some(m => m.peso != null) ? `<tr><td>IMC</td>${cols.map(m => `<td>${m.peso != null ? fNum(Math.round(m.peso / ((a.altura / 100) ** 2) * 10) / 10) : ''}</td>`).join('')}</tr>` : ''}
+        </tbody>
+      </table></div>
+      <p class="small muted" style="margin:10px 0 0">Tocá una fecha para corregir o borrar esa medición.</p>
+    </div>`;
 }
 
 /* ---------- Vista: editar día de rutina ---------- */
@@ -617,7 +808,8 @@ function vRutina(aid, rid){
   return barra('Editar rutina', { atras: `/a/${aid}`, sub: a.nombre }) + `
     <div class="card"><label class="small muted" for="rnom" style="font-weight:600">Nombre del día</label>
       <input id="rnom" class="in" value="${esc(r.nombre)}" placeholder="Ej. Día 1, Espalda, Tren inferior"></div>
-    <datalist id="ejnombres">${nombresEjercicios().map(n => `<option value="${esc(n)}">`).join('')}</datalist>
+    <datalist id="ejnombres">${biblioteca().map(x => `<option value="${esc(x.t)}">`).join('')}</datalist>
+    <datalist id="descansos">${DESCANSOS.map(d => `<option value="${d}">`).join('')}</datalist>
     ${r.ejercicios.map((e, i) => `
       <div class="card ej-edit" data-i="${i}">
         <div class="n">${i + 1}</div>
@@ -625,8 +817,9 @@ function vRutina(aid, rid){
           <input class="in" data-ej="nombre" list="ejnombres" value="${esc(e.nombre)}" placeholder="Ejercicio (ej. Pull down)">
           <div class="meta">
             <select class="in" data-ej="series">${opcSeries(e.series)}</select>
-            <input class="in" data-ej="nota" value="${esc(e.nota || '')}" placeholder="Nota (prono, drop…)">
+            <input class="in" data-ej="descanso" list="descansos" value="${esc(e.descanso || '')}" placeholder="Descanso">
           </div>
+          <input class="in" data-ej="nota" value="${esc(e.nota || '')}" placeholder="Nota (prono, drop, técnica…)">
         </div>
         <div class="tools">
           <button class="icon-btn" data-act="ejMover" data-d="-1" aria-label="Subir" ${i ? '' : 'disabled'}>${I.up}</button>
@@ -682,18 +875,29 @@ function vSesion(sid){
           <div class="sp"><h3>${esc(it.nombre)}</h3>${it.nota ? `<span class="tag">${esc(it.nota)}</span>` : ''}</div>
           <a class="icon-btn" style="width:36px;height:36px" href="#/a/${a.id}/p/${encodeURIComponent(clave(it.nombre))}" aria-label="Ver progreso">${I.chart}</a>
         </div>
-        <div class="last">${u ? `Última vez (${fFecha(u.fecha)}): ${u.sets.map(fSet).join(' · ')}` : 'Primera vez que lo hace'}</div>
+        <div class="last">${u ? `Última vez (${fFecha(u.fecha)}): ${u.sets.map(fSet).join(' · ')}${u.it.rir != null ? ` · RIR ${u.it.rir}` : ''}` : 'Primera vez que lo hace'}</div>
+        ${u?.it.dolor ? `<div class="aviso-dolor">⚠️ La última vez tuvo dolor ${esc(u.it.dolor)}${u.it.dolorNota ? `: ${esc(u.it.dolorNota)}` : ''}</div>` : ''}
+        ${u?.it.tecnica ? `<div class="last">Técnica (última vez): ${esc(u.it.tecnica)}</div>` : ''}
+        <div class="det">
+          <button class="dchip ${it.rir != null ? 'on' : ''}" data-act="detalles">RIR ${it.rir ?? '—'}</button>
+          <button class="dchip ${it.descanso ? 'on' : ''}" data-act="detalles">⏱ ${esc(it.descanso || 'Descanso')}</button>
+          <button class="dchip ${it.tecnica ? 'on' : ''}" data-act="detalles">Técnica${it.tecnica ? ' ✓' : ''}</button>
+          <button class="dchip ${it.dolor ? 'dolor' : ''}" data-act="detalles">${it.dolor ? `Dolor ${esc(it.dolor)}` : 'Dolor'}</button>
+        </div>
+        ${it.tecnica ? `<div class="det-txt"><b>Técnica:</b> ${esc(it.tecnica)}</div>` : ''}
+        ${it.dolor && it.dolorNota ? `<div class="det-txt dolor"><b>Dolor:</b> ${esc(it.dolorNota)}</div>` : ''}
         <div class="sets-h"><span>Serie</span><span>kg</span><span>reps</span></div>
         ${it.sets.map((x, j) => filaSet(x, j, paso)).join('')}
         <div class="ej-f">
           <button class="btn ghost sm" data-act="serieMas">${I.plus} Serie</button>
           ${it.sets.length > 1 ? `<button class="btn ghost sm" data-act="serieMenos">− Serie</button>` : ''}
           <span class="sp"></span>
+          <button class="icon-btn" style="width:36px;height:36px;color:var(--muted)" data-act="ejQuitar" aria-label="Quitar ejercicio de hoy">${I.x}</button>
           <button class="btn ghost sm" data-act="todasOk">${I.check} Todas</button>
         </div>
       </section>`;
     }).join('')}
-    <button class="btn ghost block" data-act="ejExtra" data-s="${s.id}">${I.plus} Ejercicio extra (solo hoy)</button>
+    <button class="btn ghost block" data-act="ejExtra" data-s="${s.id}">${I.plus} Agregar ejercicio</button>
     <h2 class="sec">Notas de la sesión</h2>
     <textarea id="snotas" class="in" placeholder="Cómo se sintió, molestias, cambios…">${esc(s.notas || '')}</textarea>
     <div class="foot"><div class="inner">
@@ -737,7 +941,7 @@ function vProgreso(aid, k){
   const regs = [];
   for (const s of sesionesDe(aid).slice().reverse()) {
     const it = s.items.find(i => clave(i.nombre) === k && hechas(i).length);
-    if (it) regs.push({ fecha: s.fecha, nombre: it.nombre, sets: hechas(it) });
+    if (it) regs.push({ fecha: s.fecha, nombre: it.nombre, sets: hechas(it), it });
   }
   if (!regs.length) return barra('Progreso', { atras: `/a/${aid}` }) + '<div class="empty">Todavía no hay registros de este ejercicio.</div>';
   const conPeso = regs.some(r => r.sets.some(x => x.p != null));
@@ -776,11 +980,19 @@ function vProgreso(aid, k){
   return barra(nombre, { atras: `/a/${aid}`, sub: a.nombre }) + `
     <div class="stats">${stats.map(([t, v, s]) => `<div class="stat"><span>${t}</span><b>${esc(v)}</b><small>${esc(s)}</small></div>`).join('')}</div>
     ${series.join('')}
+    ${regs.filter(r => r.it.tecnica || r.it.dolor).length ? `<div class="card"><div class="chart-h"><h3>Observaciones</h3></div>
+      ${regs.slice().reverse().filter(r => r.it.tecnica || r.it.dolor).map(r => `<div class="kv"><div class="t"><b>${fFecha(r.fecha)}</b>
+        ${r.it.tecnica ? `<span>Técnica: ${esc(r.it.tecnica)}</span>` : ''}
+        ${r.it.dolor ? `<span class="txt-dolor">Dolor ${esc(r.it.dolor)}${r.it.dolorNota ? ': ' + esc(r.it.dolorNota) : ''}</span>` : ''}</div></div>`).join('')}
+    </div>` : ''}
     <div class="card">
       <div class="chart-h"><h3>Planilla</h3><span class="readout"><span>peso × reps</span></span></div>
       <div class="tbl-wrap"><table class="hist">
         <thead><tr><th>Serie</th>${cols.map(r => `<th>${fFecha(r.fecha)}</th>`).join('')}</tr></thead>
-        <tbody>${Array.from({ length: maxSeries }, (_, j) => `<tr><td>${j + 1}</td>${cols.map(r => `<td>${r.sets[j] ? fSet(r.sets[j]) : ''}</td>`).join('')}</tr>`).join('')}</tbody>
+        <tbody>${Array.from({ length: maxSeries }, (_, j) => `<tr><td>${j + 1}</td>${cols.map(r => `<td>${r.sets[j] ? fSet(r.sets[j]) : ''}</td>`).join('')}</tr>`).join('')}
+          ${[['RIR', r => r.it.rir ?? ''], ['Descanso', r => esc(r.it.descanso || '')], ['Dolor', r => r.it.dolor ? `<span class="dolor-dot ${esc(r.it.dolor)}"></span>${esc(r.it.dolor)}` : '']]
+            .filter(([, f]) => cols.some(r => f(r) !== '')).map(([t, f]) => `<tr class="extra"><td>${t}</td>${cols.map(r => `<td>${f(r)}</td>`).join('')}</tr>`).join('')}
+        </tbody>
       </table></div>
     </div>`;
 }
@@ -865,6 +1077,15 @@ function vAjustes(){
       <input id="paso" class="in" inputmode="decimal" value="${fNum(S.cfg.paso)}" style="max-width:120px;margin-top:4px">
     </div>
 
+    <h2 class="sec">Biblioteca de ejercicios</h2>
+    <div class="card">
+      ${BIBLIOTECA.map(([g, ns]) => `<div class="grupo" style="margin:0 0 6px">${g}</div><div class="chips" style="margin-bottom:12px">${ns.map(n => `<span class="chip">${esc(n)}</span>`).join('')}</div>`).join('')}
+      <div class="grupo" style="margin:0 0 6px">Mis ejercicios</div>
+      ${S.biblioteca.length ? `<div class="chips" style="margin-bottom:10px">${S.biblioteca.map((n, i) => `<span class="chip">${esc(n)}<button class="chip-x" data-act="borrarDeBiblioteca" data-i="${i}" aria-label="Quitar ${esc(n)}">×</button></span>`).join('')}</div>` : ''}
+      <button class="btn ghost sm" data-act="sumarABiblioteca">${I.plus} Agregar ejercicio</button>
+      <p class="small muted" style="margin:10px 0 0">Los ejercicios que uses en las rutinas también aparecen al elegir.</p>
+    </div>
+
     <h2 class="sec">Plantillas de rutina</h2>
     <div class="card">
       ${S.plantillas.length ? S.plantillas.map(p => `<div class="kv"><div class="t"><b>${esc(p.nombre)}</b>
@@ -907,11 +1128,12 @@ async function entregarArchivo(nombre, contenido, tipo){
 }
 function csv(){
   const c = v => { const s = String(v ?? ''); return /[;"\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
-  const filas = [['Alumno', 'Objetivo', 'Fecha', 'Día', 'Ejercicio', 'Serie', 'Peso (kg)', 'Reps']];
+  const filas = [['Alumno', 'Objetivo', 'Fecha', 'Día', 'Ejercicio', 'Serie', 'Peso (kg)', 'Reps', 'RIR', 'Descanso', 'Técnica', 'Dolor', 'Detalle dolor']];
   for (const s of S.sesiones.filter(x => x.fin).sort((a, b) => a.fecha.localeCompare(b.fecha))) {
     const a = alumno(s.alumnoId);
     for (const it of s.items) hechas(it).forEach((x, j) =>
-      filas.push([a?.nombre, a?.objetivo, fFecha(s.fecha), s.rutinaNombre, it.nombre, j + 1, fNum(x.p), fNum(x.r)]));
+      filas.push([a?.nombre, a?.objetivo, fFecha(s.fecha), s.rutinaNombre, it.nombre, j + 1, fNum(x.p), fNum(x.r),
+        it.rir ?? '', it.descanso || '', it.tecnica || '', it.dolor || '', it.dolorNota || '']));
   }
   return '﻿' + filas.map(f => f.map(c).join(';')).join('\r\n');
 }
@@ -921,9 +1143,16 @@ function cargarEjemplo(){
   const ej = [
     ['Pull down', 4, ''], ['Vuelos', 4, ''], ['Remo Hammer', 5, 'prono'],
     ['Pull over', 4, 'drop'], ['Remo neutro', 4, ''], ['Face pull', 4, '']
-  ].map(([nombre, series, nota]) => ({ id: uid(), nombre, series, nota }));
+  ].map(([nombre, series, nota]) => ({ id: uid(), nombre, series, nota, descanso: series === 5 ? '2 min' : '90 s' }));
   const rut = { id: uid(), nombre: 'Día 2', ejercicios: ej };
-  const a = { id: uid(), nombre: 'Alumno de ejemplo', objetivo: 'Hipertrofia', notas: '', creado: Date.now(), rutinas: [rut] };
+  const a = {
+    id: uid(), nombre: 'Alumno de ejemplo', objetivo: 'Hipertrofia', notas: '', creado: Date.now(), rutinas: [rut],
+    frecuencia: 3, inicio: hoy(-28), altura: 175,
+    mediciones: [
+      { id: uid(), fecha: hoy(-28), peso: 80, cintura: 90, cadera: 100, pecho: 102, brazo: 35, muslo: 58 },
+      { id: uid(), fecha: hoy(-7), peso: 78.5, cintura: 88, cadera: 99, pecho: 103, brazo: 35.5, muslo: 58.5 }
+    ]
+  };
   const P = (p, rs) => rs.map((r, i) => ({ p: Array.isArray(p) ? p[i] : p, r, ok: true }));
   const datos = [
     [P(30, [15, 15, 15, 15]), P(5, [15, 15, 15, 15]), P([60, 70, 70, 75, 75], [10, 8, 8, 6, 6]), P(30, [15, 15, 15, 15]), P(15, [12, 12, 12, 12]), P(15, [20, 20, 20, 20])],
@@ -932,8 +1161,11 @@ function cargarEjemplo(){
   ];
   datos.forEach((sets, k) => S.sesiones.push({
     id: uid(), alumnoId: a.id, rutinaId: rut.id, rutinaNombre: rut.nombre, fecha: hoy(-21 + k * 7), creado: Date.now() + k,
-    fin: true, notas: '', items: ej.map((e, i) => ({ ejId: e.id, nombre: e.nombre, nota: e.nota, sets: sets[i] }))
+    fin: true, notas: '', items: ej.map((e, i) => ({ ejId: e.id, nombre: e.nombre, nota: e.nota, descanso: e.descanso, rir: 2, sets: sets[i] }))
   }));
+  // Una molestia y una observación técnica para que se vea cómo queda.
+  const ultima = S.sesiones[S.sesiones.length - 1];
+  Object.assign(ultima.items[2], { dolor: 'leve', dolorNota: 'hombro derecho en las últimas reps', tecnica: 'Cuidar no encoger los hombros' });
   S.alumnos.push(a);
   guardar();
   return a;
@@ -942,22 +1174,17 @@ function cargarEjemplo(){
 /* ---------- Acciones (botones con data-act) ---------- */
 const A = {
   async nuevoAlumno(){
-    const d = await formulario({ titulo: 'Nuevo alumno', ok: 'Agregar', campos: [
-      { nombre: 'nombre', etiqueta: 'Nombre', requerido: true, ph: 'Nombre y apellido' },
-      { nombre: 'objetivo', etiqueta: 'Objetivo', ph: 'Ej. hipertrofia, fuerza, bajar de peso' }
-    ] });
+    const d = await formulario({ titulo: 'Nuevo alumno', ok: 'Agregar', campos: camposAlumno({}, true) });
     if (!d) return;
-    const a = { id: uid(), nombre: d.nombre, objetivo: d.objetivo, notas: '', creado: Date.now(), rutinas: [] };
+    const a = { id: uid(), creado: Date.now(), rutinas: [], mediciones: [] };
+    aplicarAlumno(a, d);
+    if (num(d.peso) != null) a.mediciones.push({ id: uid(), fecha: a.inicio || hoy(), peso: num(d.peso) });
     S.alumnos.push(a); guardar();
     ir('/a/' + a.id);
   },
   async editarAlumno(el){
     const a = alumno(el.dataset.a);
-    const d = await formulario({ titulo: 'Datos del alumno', peligro: 'Eliminar', campos: [
-      { nombre: 'nombre', etiqueta: 'Nombre', requerido: true, valor: a.nombre, foco: false },
-      { nombre: 'objetivo', etiqueta: 'Objetivo', valor: a.objetivo },
-      { nombre: 'notas', etiqueta: 'Notas', tipo: 'textarea', valor: a.notas, ph: 'Lesiones, preferencias, horarios…' }
-    ] });
+    const d = await formulario({ titulo: 'Datos del alumno', peligro: 'Eliminar', campos: camposAlumno(a, false) });
     if (d === 'peligro') {
       const n = sesionesDe(a.id).length;
       if (!confirm(`¿Eliminar a ${a.nombre}${n ? ` y sus ${n} sesiones` : ''}? No se puede deshacer.`)) return;
@@ -966,8 +1193,10 @@ const A = {
       guardar(); ir('/'); return;
     }
     if (!d) return;
-    Object.assign(a, d); guardar(); pintar();
+    aplicarAlumno(a, d); guardar(); pintar();
   },
+  nuevaMedicion(el){ editarMedicion(alumno(el.dataset.a), null); },
+  editarMedicion(el){ const a = alumno(el.dataset.a); editarMedicion(a, a.mediciones.find(m => m.id === el.dataset.m)); },
   async nuevoDia(el){
     const a = alumno(el.dataset.a);
     let opciones = '<option value="">Vacío (lo armo ahora)</option>';
@@ -982,16 +1211,22 @@ const A = {
     let ejs = [];
     if (d.base.startsWith('p:')) ejs = S.plantillas.find(p => p.id === d.base.slice(2))?.ejercicios || [];
     else if (d.base.startsWith('r:')) { const [, x, r] = d.base.split(':'); ejs = alumno(x)?.rutinas.find(y => y.id === r)?.ejercicios || []; }
-    const r = { id: uid(), nombre: d.nombre, ejercicios: ejs.map(e => ({ id: uid(), nombre: e.nombre, series: e.series, nota: e.nota || '' })) };
+    const r = { id: uid(), nombre: d.nombre, ejercicios: ejs.map(e => ({ id: uid(), nombre: e.nombre, series: e.series, nota: e.nota || '', descanso: e.descanso || '' })) };
     if (!r.ejercicios.length) r.ejercicios.push({ id: uid(), nombre: '', series: 4, nota: '' });
     a.rutinas.push(r); guardar();
     vRutina.foco = r.ejercicios.length === 1 && !r.ejercicios[0].nombre ? 0 : null;
     ir(`/a/${a.id}/r/${r.id}`);
   },
-  ejNuevo(el){
+  async ejNuevo(el){
     const r = alumno(el.dataset.a).rutinas.find(x => x.id === el.dataset.r);
-    r.ejercicios.push({ id: uid(), nombre: '', series: r.ejercicios[r.ejercicios.length - 1]?.series || 4, nota: '' });
-    guardar(); vRutina.foco = r.ejercicios.length - 1; pintar();
+    const nombre = await elegirEjercicio();
+    if (!nombre) return;
+    const vacio = r.ejercicios.findIndex(e => !e.nombre.trim());
+    const ant = r.ejercicios.filter(e => e.nombre.trim()).pop();
+    const e = { id: uid(), nombre, series: ant?.series || 4, nota: '', descanso: ant?.descanso || '' };
+    if (vacio >= 0) r.ejercicios[vacio] = e; else r.ejercicios.push(e);
+    guardar(); pintar();
+    requestAnimationFrame(() => app.querySelector(`[data-i="${vacio >= 0 ? vacio : r.ejercicios.length - 1}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }));
   },
   ejMover(el){
     const r = rutinaActual(), i = +el.closest('[data-i]').dataset.i, j = i + +el.dataset.d;
@@ -1007,7 +1242,7 @@ const A = {
     const r = alumno(el.dataset.a).rutinas.find(x => x.id === el.dataset.r);
     const d = await formulario({ titulo: 'Guardar como plantilla', campos: [{ nombre: 'nombre', etiqueta: 'Nombre de la plantilla', valor: r.nombre, requerido: true }] });
     if (!d) return;
-    S.plantillas.push({ id: uid(), nombre: d.nombre, ejercicios: r.ejercicios.filter(e => e.nombre.trim()).map(e => ({ nombre: e.nombre.trim(), series: e.series, nota: e.nota })) });
+    S.plantillas.push({ id: uid(), nombre: d.nombre, ejercicios: r.ejercicios.filter(e => e.nombre.trim()).map(e => ({ nombre: e.nombre.trim(), series: e.series, nota: e.nota, descanso: e.descanso || '' })) });
     guardar(); toast('Plantilla guardada');
   },
   borrarDia(el){
@@ -1020,6 +1255,7 @@ const A = {
     const a = alumno(el.dataset.a);
     iniciarSesion(a, a.rutinas.find(x => x.id === el.dataset.r));
   },
+  repetir(el){ repetirUltimo(alumno(el.dataset.a)); },
   // Suma otro alumno a los que están entrenando, sin cerrar la sesión actual.
   async sumarAlumno(){
     const enCurso = new Set(abiertas().map(s => s.alumnoId));
@@ -1034,14 +1270,16 @@ const A = {
     const a = alumno(id);
     const abierta = abiertas().find(s => s.alumnoId === a.id);
     if (abierta) return ir('/s/' + abierta.id);
-    if (!a.rutinas.length) { toast('Primero armale una rutina'); return ir('/a/' + a.id); }
-    let r = a.rutinas[0];
-    if (a.rutinas.length > 1) {
-      const rid = await elegir({ titulo: `${a.nombre}: ¿qué día entrena?`, items: a.rutinas.map(x => ({ id: x.id, t: x.nombre, sub: `${x.ejercicios.length} ejercicios` })) });
-      if (!rid) return;
-      r = a.rutinas.find(x => x.id === rid);
-    }
-    iniciarSesion(a, r);
+    const ult = sesionesDe(a.id)[0];
+    if (!a.rutinas.length && !ult) { toast('Primero armale una rutina'); return ir('/a/' + a.id); }
+    const ops = [
+      ...(ult ? [{ id: 'ultimo', t: 'Repetir último entrenamiento', sub: `${ult.rutinaNombre} · ${fFecha(ult.fecha)} (${haceDias(ult.fecha)})` }] : []),
+      ...a.rutinas.map(x => ({ id: x.id, t: x.nombre, sub: `${x.ejercicios.length} ejercicios` }))
+    ];
+    const rid = ops.length === 1 ? ops[0].id : await elegir({ titulo: `${a.nombre}: ¿qué entrena hoy?`, items: ops });
+    if (!rid) return;
+    if (rid === 'ultimo') repetirUltimo(a);
+    else iniciarSesion(a, a.rutinas.find(x => x.id === rid));
   },
   marcar(el){
     const s = sesionActual(), { fila, x } = ubicarSet(s, el);
@@ -1063,17 +1301,35 @@ const A = {
     it.sets.forEach((x, j) => { x.ok = true; pintarFila(card.querySelector(`[data-s="${j}"]`), x); });
     actualizarProgreso(s); guardar();
   },
-  async ejExtra(el){
-    const s = S.sesiones.find(x => x.id === el.dataset.s);
-    const d = await formulario({ titulo: 'Ejercicio extra', ok: 'Agregar', campos: [
-      { nombre: 'nombre', etiqueta: 'Ejercicio', requerido: true },
-      { nombre: 'series', etiqueta: 'Series', valor: '3', modo: 'numeric' }
+  async detalles(el){
+    const s = sesionActual(), it = s.items[+el.closest('[data-i]').dataset.i];
+    const d = await formulario({ titulo: it.nombre, campos: [
+      { nombre: 'rir', etiqueta: 'RIR (reps en reserva)', tipo: 'select', medio: true, valor: it.rir ?? '',
+        opciones: [['', '—'], ...[0, 1, 2, 3, 4].map(n => [n, String(n)]), [5, '5 o más']] },
+      { nombre: 'descanso', etiqueta: 'Descanso', lista: DESCANSOS, valor: it.descanso, ph: 'Ej. 90 s', medio: true, foco: false },
+      { nombre: 'tecnica', etiqueta: 'Técnica / observación', tipo: 'textarea', valor: it.tecnica, ph: 'Correcciones, rango, tempo…' },
+      { nombre: 'dolor', etiqueta: 'Dolor / molestia', tipo: 'select', opciones: DOLOR, valor: it.dolor || '', medio: true },
+      { nombre: 'dolorNota', etiqueta: '¿Dónde? ¿Cuándo?', valor: it.dolorNota, ph: 'Ej. rodilla al bajar', medio: true }
     ] });
     if (!d) return;
-    const u = ultimoDe(s.alumnoId, d.nombre, s.id, s.fecha);
-    const n = Math.max(1, Math.min(10, parseInt(d.series) || 3));
-    s.items.push({ ejId: null, nombre: d.nombre, nota: '', sets: Array.from({ length: n }, (_, i) => {
-      const b = u ? (u.sets[i] || u.sets[u.sets.length - 1]) : null;
+    it.rir = d.rir === '' ? null : +d.rir;
+    it.descanso = d.descanso; it.tecnica = d.tecnica;
+    it.dolor = d.dolor || null; it.dolorNota = d.dolor ? d.dolorNota : '';
+    guardar(); pintar();
+  },
+  ejQuitar(el){
+    const s = sesionActual(), i = +el.closest('[data-i]').dataset.i;
+    if (!confirm(`¿Quitar “${s.items[i].nombre}” de la sesión de hoy?`)) return;
+    s.items.splice(i, 1); guardar(); pintar();
+  },
+  async ejExtra(el){
+    const s = S.sesiones.find(x => x.id === el.dataset.s);
+    const nombre = await elegirEjercicio();
+    if (!nombre) return;
+    const u = ultimoDe(s.alumnoId, nombre, s.id, s.fecha);
+    const n = u ? u.sets.length : 3;
+    s.items.push({ ejId: null, nombre, nota: '', descanso: u?.it.descanso || '', sets: Array.from({ length: n }, (_, i) => {
+      const b = u ? u.sets[i] : null;
       return { p: b ? b.p : null, r: b ? b.r : null, ok: false };
     }) });
     guardar(); pintar();
@@ -1088,7 +1344,17 @@ const A = {
       return;
     }
     if (listas < total && !confirm(`Hay ${total - listas} series sin marcar (✓). No se van a guardar. ¿Terminar igual?`)) return;
-    s.items = s.items.map(i => ({ ...i, sets: hechas(i) })).filter(i => i.sets.length);
+    s.items = s.items.map(i => ({ ...i, sets: hechas(i).filter(x => x.p != null || x.r != null) })).filter(i => i.sets.length);
+    const r = alumno(s.alumnoId).rutinas.find(x => x.id === s.rutinaId);
+    const firma = its => its.map(i => clave(i.nombre) + ':' + (i.series ?? i.sets.length)).join('|');
+    if (r && firma(r.ejercicios.filter(e => e.nombre.trim())) !== firma(s.items)
+        && confirm(`Hoy cambiaron ejercicios o series respecto de “${r.nombre}”. ¿Guardar estos cambios en la rutina para la próxima?`)) {
+      const prev = new Map(r.ejercicios.map(e => [clave(e.nombre), e]));
+      r.ejercicios = s.items.map(i => {
+        const e = prev.get(clave(i.nombre));
+        return { id: e?.id || uid(), nombre: i.nombre, series: i.sets.length, nota: e?.nota ?? i.nota ?? '', descanso: i.descanso || e?.descanso || '' };
+      });
+    }
     s.fin = true; guardarYa();
     toast(`Sesión de ${alumno(s.alumnoId).nombre.split(/\s+/)[0]} guardada ✓`);
     // Si hay otros alumnos entrenando, sigue con el siguiente.
@@ -1109,6 +1375,15 @@ const A = {
   },
   restaurar(){ $('#fileIn').click(); },
   async csv(){ await entregarArchivo(`entrenamiento-${hoy()}.csv`, csv(), 'text/csv'); },
+  async sumarABiblioteca(){
+    const d = await formulario({ titulo: 'Nuevo ejercicio', ok: 'Agregar', campos: [{ nombre: 'nombre', etiqueta: 'Nombre', requerido: true }] });
+    if (!d) return;
+    if (biblioteca().some(x => clave(x.t) === clave(d.nombre))) { toast('Ya está en la biblioteca'); return; }
+    S.biblioteca.push(d.nombre); guardar(); pintar();
+  },
+  borrarDeBiblioteca(el){
+    S.biblioteca.splice(+el.dataset.i, 1); guardar(); pintar();
+  },
   borrarPlantilla(el){
     const p = S.plantillas.find(x => x.id === el.dataset.p);
     if (!confirm(`¿Eliminar la plantilla “${p.nombre}”?`)) return;
@@ -1139,10 +1414,45 @@ function iniciarSesion(a, r){
         const b = u ? (u.sets[i] || u.sets[u.sets.length - 1]) : null;
         return { p: b ? b.p : null, r: b ? b.r : null, ok: false };
       });
-      return { ejId: e.id, nombre: e.nombre.trim(), nota: e.nota || '', sets };
+      return { ejId: e.id, nombre: e.nombre.trim(), nota: e.nota || '', descanso: e.descanso || u?.it.descanso || '', sets };
     })
   };
   S.sesiones.push(s); guardar(); ir('/s/' + s.id);
+}
+// Arranca una sesión idéntica a la última (ejercicios, series, pesos y descansos) para ir ajustando en el día.
+function repetirUltimo(a){
+  const ult = sesionesDe(a.id)[0];
+  if (!ult) return;
+  const abierta = abiertas().find(s => s.alumnoId === a.id);
+  if (abierta) {
+    if (!confirm(`${a.nombre} tiene una sesión sin terminar. ¿Descartarla y repetir el último entrenamiento?`)) return ir('/s/' + abierta.id);
+    S.sesiones = S.sesiones.filter(s => s !== abierta);
+  }
+  const s = {
+    id: uid(), alumnoId: a.id, rutinaId: ult.rutinaId, rutinaNombre: ult.rutinaNombre, fecha: hoy(), creado: Date.now(), fin: false, notas: '',
+    items: ult.items.map(i => ({ ejId: i.ejId, nombre: i.nombre, nota: i.nota || '', descanso: i.descanso || '', sets: i.sets.map(x => ({ p: x.p, r: x.r, ok: false })) }))
+  };
+  S.sesiones.push(s); guardar(); ir('/s/' + s.id);
+}
+async function editarMedicion(a, m){
+  const d = await formulario({
+    titulo: m ? `Medición del ${fFecha(m.fecha)}` : 'Nueva medición', peligro: m ? 'Eliminar' : null,
+    campos: [
+      { nombre: 'fecha', etiqueta: 'Fecha', tipo: 'date', valor: m?.fecha || hoy(), medio: true, foco: false },
+      ...MEDIDAS.map(([k, t, u]) => ({ nombre: k, etiqueta: `${t} (${u})`, modo: 'decimal', valor: fNum(m?.[k]), medio: true }))
+    ]
+  });
+  if (d === 'peligro') {
+    if (!confirm('¿Eliminar esta medición?')) return;
+    a.mediciones = a.mediciones.filter(x => x !== m); guardar(); pintar(); return;
+  }
+  if (!d) return;
+  const nueva = m || { id: uid() };
+  nueva.fecha = d.fecha || hoy();
+  for (const [k] of MEDIDAS) nueva[k] = num(d[k]);
+  if (!MEDIDAS.some(([k]) => nueva[k] != null)) { toast('No cargaste ninguna medida'); return; }
+  if (!m) a.mediciones.push(nueva);
+  guardar(); pintar(); toast('Medición guardada');
 }
 function rutinaActual(){
   const p = location.hash.split('/');

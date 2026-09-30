@@ -5,14 +5,24 @@ peso · reps), pensada para usar solo desde el celular.
 
 ## Qué hace
 
-- **Alumnos**: lista con buscador, objetivo y notas (lesiones, horarios…).
+- **Alumnos**: lista con buscador. Ficha con objetivo, frecuencia semanal,
+  fecha de inicio, altura, peso, IMC y notas (lesiones, horarios…).
+- **Medidas corporales**: peso, % grasa, cintura, cadera, pecho, brazo, muslo y
+  pantorrilla, con historial, cambio desde la primera medición y gráficos.
 - **Rutina por días** ("Día 1", "Día 2"…): ejercicios con cantidad de series y
-  una nota (prono, drop…). Se puede armar de cero, desde una **plantilla** o
-  **copiando** la rutina de otro alumno.
+  una nota (prono, drop…) y descanso. Los ejercicios se eligen de una
+  **biblioteca** (tren inferior y superior) a la que se pueden sumar propios.
+  Se puede armar de cero, desde una **plantilla** o **copiando** la rutina de
+  otro alumno.
 - **Entrenar**: cada serie arranca con el peso y las reps de la última vez.
   Si repite, toca el número de serie (✓). Si cambia, ajusta con **+ / −**
   (el paso del peso se configura, por defecto ±2,5 kg) o escribe el valor.
-  Se pueden sumar series y ejercicios extra solo para ese día.
+  Se pueden sumar o quitar series y ejercicios en el día; al terminar, la app
+  ofrece guardar esos cambios en la rutina.
+- **Por ejercicio**: RIR, descanso, técnica/observación y dolor o molestia
+  (leve, moderado, fuerte). Si la vez anterior hubo dolor, aparece un aviso.
+- **Repetir último entrenamiento**: desde la ficha (o al sumar un alumno) se
+  arranca una sesión igual a la última, para ir modificándola en el momento.
 - **Varios alumnos a la vez**: arriba de la sesión hay una barra con todos los
   que están entrenando; se pasa de uno a otro con un toque (cada uno queda
   donde se lo dejó) y con **+ Sumar** se agrega otro sin cerrar nada. Al
