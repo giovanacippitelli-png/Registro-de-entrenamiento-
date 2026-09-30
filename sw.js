@@ -1,6 +1,6 @@
 // Service worker: guarda la app en caché para que funcione sin conexión.
 // Al publicar cambios, subir la versión para que los celulares tomen la nueva.
-const VERSION = 'entrenamiento-v3';
+const VERSION = 'entrenamiento-v4';
 const ARCHIVOS = [
   './',
   './index.html',

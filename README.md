@@ -9,8 +9,11 @@ peso · reps), pensada para usar solo desde el celular.
   fecha de inicio, altura, peso, IMC y notas (lesiones, horarios…).
 - **Medidas corporales**: peso, % grasa, cintura, cadera, pecho, brazo, muslo y
   pantorrilla, con historial, cambio desde la primera medición y gráficos.
-- **Rutina por días** ("Día 1", "Día 2"…): ejercicios con cantidad de series y
-  una nota (prono, drop…) y descanso. Los ejercicios se eligen de una
+- **Rutina por días** ("Lunes – Tren inferior", "Día 2"…): cada ejercicio con
+  las mismas columnas de la planilla en Word (Series x Reps, Carga, Método /
+  Observaciones) y descanso. "Series x Reps" se escribe libre (4x12,
+  3x15 + 2x10, 12 10 8…) y la app deduce cuántas series son y las reps de cada
+  una. Los ejercicios se eligen de una
   **biblioteca** (tren inferior y superior) a la que se pueden sumar propios.
   Se puede armar de cero, desde una **plantilla** o **copiando** la rutina de
   otro alumno.
@@ -23,6 +26,10 @@ peso · reps), pensada para usar solo desde el celular.
   (leve, moderado, fuerte). Si la vez anterior hubo dolor, aparece un aviso.
 - **Repetir último entrenamiento**: desde la ficha (o al sumar un alumno) se
   arranca una sesión igual a la última, para ir modificándola en el momento.
+- **Word**: "Importar de Word" lee un .docx con la rutina en tablas (un día por
+  tabla, con el nombre del día en el renglón de arriba) y crea los días.
+  "Descargar en Word" arma el documento con el mismo formato, opcionalmente con
+  los últimos pesos de cada ejercicio, para mandárselo al alumno.
 - **Varios alumnos a la vez**: arriba de la sesión hay una barra con todos los
   que están entrenando; se pasa de uno a otro con un toque (cada uno queda
   donde se lo dejó) y con **+ Sumar** se agrega otro sin cerrar nada. Al

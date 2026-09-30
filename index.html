@@ -270,6 +270,7 @@
   a.card.ultimo.live .t{flex:1;}
 
   /* Detalles por ejercicio en la sesión */
+  .plan{font-size:14px;font-weight:600;color:var(--primary);margin-top:2px;}
   .det{display:flex;gap:6px;flex-wrap:wrap;margin:2px 0 8px;}
   .dchip{min-height:34px;padding:0 10px;border-radius:17px;border:1px dashed var(--border);background:var(--panel);color:var(--muted);font:inherit;font-size:13px;cursor:pointer;}
   .dchip.on{border-style:solid;border-color:var(--primary);color:var(--primary);background:var(--primary-soft);font-weight:600;}
@@ -309,6 +310,7 @@
 <dialog id="dlg"></dialog>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <input type="file" id="fileIn" accept="application/json,.json" hidden>
+<input type="file" id="wordIn" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" hidden>
 
 <script>
 'use strict';
@@ -565,6 +567,36 @@ const OBJETIVOS = ['Hipertrofia', 'Fuerza', 'Bajar de peso', 'Recomposición cor
 const FRECUENCIAS = [['', '—'], ...[1, 2, 3, 4, 5, 6, 7].map(n => [n, `${n}× por semana`])];
 const DOLOR = [['', 'Sin dolor'], ['leve', 'Leve'], ['moderado', 'Moderado'], ['fuerte', 'Fuerte']];
 const DESCANSOS = ['30 s', '45 s', '60 s', '90 s', '2 min', '3 min', '4 min', '5 min'];
+const CARGAS = ['Ligera', 'Moderada', 'Intensidad media', 'Alta', 'Progresiva', 'Corporal'];
+const copiarEj = e => ({ id: uid(), nombre: (e.nombre || '').trim(), series: e.series || 3, reps: e.reps || '', carga: e.carga || '', nota: e.nota || '', descanso: e.descanso || '' });
+
+// Convierte lo que escribe el profe en "Series x Reps" en las reps de cada serie.
+// "4x12" → [12,12,12,12] · "3x15, 2x10" → [15,15,15,10,10] · "12 10 8" → [12,10,8]
+// "4x12 10 8 8" y "3x8+10+12" → una rep por serie · "2xamrap" → [null,null]
+function planSeries(txt){
+  const s = String(txt || '').toLowerCase().replace(/\([^)]*\)/g, ' ');
+  const out = [];
+  const re = /(\d+)(?:[x×]\s*|\s+[x×]\s+)(amrap|fallo|\d+)?|(\d+)/g;
+  let m, grupo = null; // último "NxM" para ver si los números sueltos que siguen son una serie cada uno
+  while ((m = re.exec(s))) {
+    if (m[1] != null) {
+      const n = Math.min(+m[1], 10), r = m[2] && /\d/.test(m[2]) ? +m[2] : null;
+      grupo = { n, desde: out.length, sueltos: [] };
+      for (let i = 0; i < n; i++) out.push(r);
+    } else {
+      const v = +m[3];
+      if (v > 100) continue;
+      if (grupo) grupo.sueltos.push(v);
+      out.push(v);
+    }
+  }
+  // "4x12 10 8 8": 4 series en total, no 4 + 3.
+  if (grupo && grupo.sueltos.length === grupo.n - 1) {
+    out.splice(grupo.desde, out.length - grupo.desde, out[grupo.desde], ...grupo.sueltos);
+  }
+  return out.slice(0, 12);
+}
+
 
 function camposAlumno(a = {}, nuevo){
   return [
@@ -734,6 +766,10 @@ function vAlumno(id){
         <button class="btn ${ult && !abierta ? 'ghost' : 'primary'}" data-act="entrenar" data-a="${a.id}" data-r="${r.id}">${abierta?.rutinaId === r.id ? 'Continuar' : 'Entrenar'}</button>
       </div>`).join('') || '<div class="card muted small">Todavía no tiene días de rutina. Agregá el primero.</div>'}
     <button class="btn ghost block" data-act="nuevoDia" data-a="${a.id}">${I.plus} Agregar día de rutina</button>
+    <div class="row" style="margin-top:8px">
+      <button class="btn ghost sm" style="flex:1" data-act="importarWord" data-a="${a.id}">Importar de Word</button>
+      ${a.rutinas.length ? `<button class="btn ghost sm" style="flex:1" data-act="descargarWord" data-a="${a.id}">Descargar en Word</button>` : ''}
+    </div>
 
     <h2 class="sec">Medidas corporales</h2>
     <div class="card">
@@ -797,6 +833,12 @@ function vRutina(aid, rid){
       el.addEventListener(el.tagName === 'SELECT' ? 'change' : 'input', () => {
         const e = r.ejercicios[+el.closest('[data-i]').dataset.i];
         e[el.dataset.ej] = el.dataset.ej === 'series' ? +el.value : el.value;
+        if (el.dataset.ej === 'series') delete e.seriesAuto;
+        // Al escribir "4x12", "12 10 8"… se ajusta solo la cantidad de series.
+        if (el.dataset.ej === 'reps') {
+          const n = planSeries(el.value).length;
+          if (n) { e.series = Math.min(n, 10); el.closest('[data-i]').querySelector('[data-ej=series]').value = e.series; }
+        }
         guardar();
       });
     });
@@ -810,16 +852,19 @@ function vRutina(aid, rid){
       <input id="rnom" class="in" value="${esc(r.nombre)}" placeholder="Ej. Día 1, Espalda, Tren inferior"></div>
     <datalist id="ejnombres">${biblioteca().map(x => `<option value="${esc(x.t)}">`).join('')}</datalist>
     <datalist id="descansos">${DESCANSOS.map(d => `<option value="${d}">`).join('')}</datalist>
+    <datalist id="cargas">${CARGAS.map(d => `<option value="${d}">`).join('')}</datalist>
     ${r.ejercicios.map((e, i) => `
       <div class="card ej-edit" data-i="${i}">
         <div class="n">${i + 1}</div>
         <div class="main">
           <input class="in" data-ej="nombre" list="ejnombres" value="${esc(e.nombre)}" placeholder="Ejercicio (ej. Pull down)">
+          <input class="in" data-ej="reps" value="${esc(e.reps || '')}" placeholder="Series x reps (4x12, 12 10 8…)">
           <div class="meta">
-            <select class="in" data-ej="series">${opcSeries(e.series)}</select>
+            <select class="in" data-ej="series" aria-label="Cantidad de series">${opcSeries(e.series)}</select>
             <input class="in" data-ej="descanso" list="descansos" value="${esc(e.descanso || '')}" placeholder="Descanso">
           </div>
-          <input class="in" data-ej="nota" value="${esc(e.nota || '')}" placeholder="Nota (prono, drop, técnica…)">
+          <input class="in" data-ej="carga" list="cargas" value="${esc(e.carga || '')}" placeholder="Carga (moderada, alta, 15 12 10 8…)">
+          <input class="in" data-ej="nota" value="${esc(e.nota || '')}" placeholder="Método / observaciones (drop, bi serie…)">
         </div>
         <div class="tools">
           <button class="icon-btn" data-act="ejMover" data-d="-1" aria-label="Subir" ${i ? '' : 'disabled'}>${I.up}</button>
@@ -872,7 +917,9 @@ function vSesion(sid){
       const u = ultimoDe(a.id, it.nombre, s.id, s.fecha);
       return `<section class="card" data-i="${i}">
         <div class="ej-h">
-          <div class="sp"><h3>${esc(it.nombre)}</h3>${it.nota ? `<span class="tag">${esc(it.nota)}</span>` : ''}</div>
+          <div class="sp"><h3>${esc(it.nombre)}</h3>
+            ${it.plan || it.carga ? `<div class="plan">${[it.plan, it.carga].filter(Boolean).map(esc).join(' · ')}</div>` : ''}
+            ${it.nota ? `<span class="tag">${esc(it.nota)}</span>` : ''}</div>
           <a class="icon-btn" style="width:36px;height:36px" href="#/a/${a.id}/p/${encodeURIComponent(clave(it.nombre))}" aria-label="Ver progreso">${I.chart}</a>
         </div>
         <div class="last">${u ? `Última vez (${fFecha(u.fecha)}): ${u.sets.map(fSet).join(' · ')}${u.it.rir != null ? ` · RIR ${u.it.rir}` : ''}` : 'Primera vez que lo hace'}</div>
@@ -1138,6 +1185,124 @@ function csv(){
   return '﻿' + filas.map(f => f.map(c).join(';')).join('\r\n');
 }
 
+/* ---------- Word (.docx): importar y descargar rutinas ---------- */
+// Un .docx es un zip con XML adentro; se lee y se arma acá mismo, sin servicios externos.
+async function leerZip(buf){
+  const dv = new DataView(buf), u8 = new Uint8Array(buf), dec = new TextDecoder();
+  let fin = -1;
+  for (let i = buf.byteLength - 22; i >= Math.max(0, buf.byteLength - 70000); i--) if (dv.getUint32(i, true) === 0x06054b50) { fin = i; break; }
+  if (fin < 0) throw new Error('zip');
+  const n = dv.getUint16(fin + 10, true);
+  let pos = dv.getUint32(fin + 16, true);
+  const archivos = {};
+  for (let k = 0; k < n; k++) {
+    const metodo = dv.getUint16(pos + 10, true), tam = dv.getUint32(pos + 20, true);
+    const ln = dv.getUint16(pos + 28, true), le = dv.getUint16(pos + 30, true), lc = dv.getUint16(pos + 32, true);
+    const local = dv.getUint32(pos + 42, true);
+    const nombre = dec.decode(u8.subarray(pos + 46, pos + 46 + ln));
+    archivos[nombre] = { metodo, tam, local };
+    pos += 46 + ln + le + lc;
+  }
+  return async nombre => {
+    const f = archivos[nombre];
+    if (!f) return null;
+    const ini = f.local + 30 + dv.getUint16(f.local + 26, true) + dv.getUint16(f.local + 28, true);
+    const datos = u8.subarray(ini, ini + f.tam);
+    if (f.metodo === 0) return dec.decode(datos);
+    return new Response(new Blob([datos]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).text();
+  };
+}
+// Lee la planilla: cada tabla es un día; el párrafo anterior es su nombre.
+// Columnas: Ejercicio · Series x Reps · Carga · Método / Observaciones.
+async function leerRutinaWord(buf){
+  const leer = await leerZip(buf);
+  const xml = await leer('word/document.xml');
+  if (!xml) throw new Error('docx');
+  const doc = new DOMParser().parseFromString(xml, 'application/xml');
+  const texto = n => {
+    let t = '';
+    n.querySelectorAll('*').forEach(e => {
+      if (e.localName === 't') t += e.textContent;
+      else if (e.localName === 'tab' || e.localName === 'br') t += ' ';
+      else if (e.localName === 'p' && t && !t.endsWith(' ')) t += ' ';
+    });
+    return t.replace(/\s+/g, ' ').trim();
+  };
+  const body = [...doc.getElementsByTagName('*')].find(e => e.localName === 'body');
+  const parrafos = [], dias = [];
+  let ultimo = '';
+  for (const n of body.children) {
+    if (n.localName === 'p') { const t = texto(n); if (t) { ultimo = t; parrafos.push(t); } }
+    else if (n.localName === 'tbl') {
+      const filas = [...n.children].filter(r => r.localName === 'tr')
+        .map(r => [...r.children].filter(c => c.localName === 'tc').map(texto));
+      const ejercicios = filas.filter((f, i) => f[0] && !(i === 0 && /^ejercicio/i.test(f[0]))).map(f => {
+        const plan = planSeries(f[1]);
+        const e = copiarEj({ nombre: f[0], reps: f[1] || '', carga: f[2] || '', nota: f[3] || '', series: Math.min(plan.length || 3, 10) });
+        if (!plan.length) e.seriesAuto = true; // en el Word no decía cuántas series
+        return e;
+      });
+      if (ejercicios.length) dias.push({ nombre: ultimo || `Día ${dias.length + 1}`, ejercicios });
+      ultimo = '';
+    }
+  }
+  const titulo = parrafos.length && dias.length && parrafos[0] !== dias[0].nombre ? parrafos[0] : '';
+  return { titulo, dias };
+}
+
+// --- Generar el .docx (zip sin comprimir) ---
+const CRC = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+function crc32(u8){ let c = 0xffffffff; for (const b of u8) c = CRC[(c ^ b) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; }
+function armarZip(archivos){
+  const enc = new TextEncoder(), partes = [], central = [];
+  let pos = 0;
+  for (const [nombre, contenido] of archivos) {
+    const nb = enc.encode(nombre), datos = enc.encode(contenido), crc = crc32(datos);
+    const h = new DataView(new ArrayBuffer(30));
+    h.setUint32(0, 0x04034b50, true); h.setUint16(4, 20, true); h.setUint16(6, 0x0800, true);
+    h.setUint32(14, crc, true); h.setUint32(18, datos.length, true); h.setUint32(22, datos.length, true); h.setUint16(26, nb.length, true);
+    const c = new DataView(new ArrayBuffer(46));
+    c.setUint32(0, 0x02014b50, true); c.setUint16(4, 20, true); c.setUint16(6, 20, true); c.setUint16(8, 0x0800, true);
+    c.setUint32(16, crc, true); c.setUint32(20, datos.length, true); c.setUint32(24, datos.length, true); c.setUint16(28, nb.length, true);
+    c.setUint32(42, pos, true);
+    partes.push(h, nb, datos); central.push(c, nb);
+    pos += 30 + nb.length + datos.length;
+  }
+  const tamCentral = central.reduce((t, x) => t + x.byteLength, 0);
+  const f = new DataView(new ArrayBuffer(22));
+  f.setUint32(0, 0x06054b50, true); f.setUint16(8, archivos.length, true); f.setUint16(10, archivos.length, true);
+  f.setUint32(12, tamCentral, true); f.setUint32(16, pos, true);
+  return new Blob([...partes, ...central, f], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+}
+const xe = t => String(t ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+function wordRutina(a, { conPesos }){
+  const par = (t, { negrita, tam, antes = 0, despues = 120 } = {}) =>
+    `<w:p><w:pPr><w:spacing w:before="${antes}" w:after="${despues}"/></w:pPr><w:r><w:rPr>${negrita ? '<w:b/>' : ''}${tam ? `<w:sz w:val="${tam}"/>` : ''}</w:rPr><w:t xml:space="preserve">${xe(t)}</w:t></w:r></w:p>`;
+  const cols = ['Ejercicio', 'Series x Reps', 'Carga', 'Método / Observaciones', ...(conPesos ? ['Último registro'] : [])];
+  const anchos = conPesos ? [2300, 1700, 1300, 2300, 2000] : [2800, 2100, 1600, 3100];
+  const celda = (t, i, cab) => `<w:tc><w:tcPr><w:tcW w:w="${anchos[i]}" w:type="dxa"/>${cab ? '<w:shd w:val="clear" w:color="auto" w:fill="D9DCF2"/>' : ''}</w:tcPr><w:p><w:r><w:rPr>${cab ? '<w:b/>' : ''}<w:sz w:val="20"/></w:rPr><w:t xml:space="preserve">${xe(t)}</w:t></w:r></w:p></w:tc>`;
+  const borde = t => `<w:${t} w:val="single" w:sz="4" w:space="0" w:color="8A8FB5"/>`;
+  const tabla = r => `<w:tbl><w:tblPr><w:tblW w:w="0" w:type="auto"/><w:tblBorders>${['top', 'left', 'bottom', 'right', 'insideH', 'insideV'].map(borde).join('')}</w:tblBorders><w:tblCellMar><w:left w:w="80" w:type="dxa"/><w:right w:w="80" w:type="dxa"/></w:tblCellMar></w:tblPr>
+    <w:tblGrid>${anchos.map(w => `<w:gridCol w:w="${w}"/>`).join('')}</w:tblGrid>
+    <w:tr><w:trPr><w:tblHeader/></w:trPr>${cols.map((c, i) => celda(c, i, true)).join('')}</w:tr>
+    ${r.ejercicios.filter(e => e.nombre.trim()).map(e => {
+      const u = conPesos ? ultimoDe(a.id, e.nombre) : null;
+      const obs = [e.nota, e.descanso ? `Descanso ${e.descanso}` : ''].filter(Boolean).join(' · ');
+      return `<w:tr>${[e.nombre, e.reps || (e.seriesAuto ? '' : `${e.series} series`), e.carga, obs, ...(conPesos ? [u ? `${u.sets.map(fSet).join(' · ')} (${fFecha(u.fecha)})` : ''] : [])].map((t, i) => celda(t, i)).join('')}</w:tr>`;
+    }).join('')}</w:tbl>`;
+  const datos = [a.objetivo && `Objetivo: ${a.objetivo}`, a.frecuencia && `Frecuencia: ${a.frecuencia}× por semana`, `Fecha: ${fFecha(hoy())}`].filter(Boolean).join('   ·   ');
+  const cuerpo = par((a.programa || 'Rutina de entrenamiento').toUpperCase(), { negrita: true, tam: 28 }) +
+    par(a.nombre, { negrita: true, tam: 24, despues: 60 }) + par(datos, { tam: 20, despues: 240 }) +
+    a.rutinas.map(r => par(r.nombre, { negrita: true, tam: 24, antes: 240 }) + tabla(r)).join('') +
+    par('M. Casamitjana · Preparador físico', { tam: 18, antes: 360 });
+  const W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+  return armarZip([
+    ['[Content_Types].xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>`],
+    ['_rels/.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>`],
+    ['word/document.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document ${W}><w:body>${cuerpo}<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1000" w:right="900" w:bottom="1000" w:left="900" w:header="600" w:footer="600" w:gutter="0"/></w:sectPr></w:body></w:document>`]
+  ]);
+}
+
 /* ---------- Datos de ejemplo (tomados de la planilla en papel) ---------- */
 function cargarEjemplo(){
   const ej = [
@@ -1211,7 +1376,7 @@ const A = {
     let ejs = [];
     if (d.base.startsWith('p:')) ejs = S.plantillas.find(p => p.id === d.base.slice(2))?.ejercicios || [];
     else if (d.base.startsWith('r:')) { const [, x, r] = d.base.split(':'); ejs = alumno(x)?.rutinas.find(y => y.id === r)?.ejercicios || []; }
-    const r = { id: uid(), nombre: d.nombre, ejercicios: ejs.map(e => ({ id: uid(), nombre: e.nombre, series: e.series, nota: e.nota || '', descanso: e.descanso || '' })) };
+    const r = { id: uid(), nombre: d.nombre, ejercicios: ejs.map(copiarEj) };
     if (!r.ejercicios.length) r.ejercicios.push({ id: uid(), nombre: '', series: 4, nota: '' });
     a.rutinas.push(r); guardar();
     vRutina.foco = r.ejercicios.length === 1 && !r.ejercicios[0].nombre ? 0 : null;
@@ -1223,7 +1388,7 @@ const A = {
     if (!nombre) return;
     const vacio = r.ejercicios.findIndex(e => !e.nombre.trim());
     const ant = r.ejercicios.filter(e => e.nombre.trim()).pop();
-    const e = { id: uid(), nombre, series: ant?.series || 4, nota: '', descanso: ant?.descanso || '' };
+    const e = copiarEj({ nombre, series: ant?.series || 4, descanso: ant?.descanso });
     if (vacio >= 0) r.ejercicios[vacio] = e; else r.ejercicios.push(e);
     guardar(); pintar();
     requestAnimationFrame(() => app.querySelector(`[data-i="${vacio >= 0 ? vacio : r.ejercicios.length - 1}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }));
@@ -1242,7 +1407,7 @@ const A = {
     const r = alumno(el.dataset.a).rutinas.find(x => x.id === el.dataset.r);
     const d = await formulario({ titulo: 'Guardar como plantilla', campos: [{ nombre: 'nombre', etiqueta: 'Nombre de la plantilla', valor: r.nombre, requerido: true }] });
     if (!d) return;
-    S.plantillas.push({ id: uid(), nombre: d.nombre, ejercicios: r.ejercicios.filter(e => e.nombre.trim()).map(e => ({ nombre: e.nombre.trim(), series: e.series, nota: e.nota, descanso: e.descanso || '' })) });
+    S.plantillas.push({ id: uid(), nombre: d.nombre, ejercicios: r.ejercicios.filter(e => e.nombre.trim()).map(e => { const c = copiarEj(e); delete c.id; return c; }) });
     guardar(); toast('Plantilla guardada');
   },
   borrarDia(el){
@@ -1352,7 +1517,7 @@ const A = {
       const prev = new Map(r.ejercicios.map(e => [clave(e.nombre), e]));
       r.ejercicios = s.items.map(i => {
         const e = prev.get(clave(i.nombre));
-        return { id: e?.id || uid(), nombre: i.nombre, series: i.sets.length, nota: e?.nota ?? i.nota ?? '', descanso: i.descanso || e?.descanso || '' };
+        return { ...copiarEj(e || i), id: e?.id || uid(), nombre: i.nombre, series: i.sets.length, descanso: i.descanso || e?.descanso || '' };
       });
     }
     s.fin = true; guardarYa();
@@ -1375,6 +1540,22 @@ const A = {
   },
   restaurar(){ $('#fileIn').click(); },
   async csv(){ await entregarArchivo(`entrenamiento-${hoy()}.csv`, csv(), 'text/csv'); },
+  importarWord(el){
+    const inp = $('#wordIn');
+    inp.dataset.a = el.dataset.a; inp.value = ''; inp.click();
+  },
+  async descargarWord(el){
+    const a = alumno(el.dataset.a);
+    const d = await formulario({ titulo: 'Descargar rutina en Word', ok: 'Descargar', campos: [
+      { nombre: 'programa', etiqueta: 'Título', valor: a.programa || 'Rutina de entrenamiento', foco: false },
+      { nombre: 'pesos', etiqueta: 'Incluir los últimos pesos que hizo', tipo: 'select', opciones: [['si', 'Sí, agregar columna “Último registro”'], ['no', 'No, solo la rutina']] }
+    ] });
+    if (!d) return;
+    a.programa = d.programa; guardar();
+    const nombre = `${a.nombre.replace(/[^\p{L}\p{N} ]/gu, '').trim().replace(/\s+/g, '_')}_rutina_${hoy()}.docx`;
+    const blob = wordRutina(a, { conPesos: d.pesos === 'si' });
+    await entregarArchivo(nombre, blob, blob.type);
+  },
   async sumarABiblioteca(){
     const d = await formulario({ titulo: 'Nuevo ejercicio', ok: 'Agregar', campos: [{ nombre: 'nombre', etiqueta: 'Nombre', requerido: true }] });
     if (!d) return;
@@ -1410,11 +1591,13 @@ function iniciarSesion(a, r){
     // Cada serie arranca con lo que hizo la última vez: si repite, solo toca ✓.
     items: r.ejercicios.filter(e => e.nombre.trim()).map(e => {
       const u = ultimoDe(a.id, e.nombre, null, f);
+      const plan = planSeries(e.reps);
       const sets = Array.from({ length: Math.max(1, e.series || 1) }, (_, i) => {
         const b = u ? (u.sets[i] || u.sets[u.sets.length - 1]) : null;
-        return { p: b ? b.p : null, r: b ? b.r : null, ok: false };
+        // Sin historial, las reps salen de lo planificado ("4x12" → 12).
+        return { p: b ? b.p : null, r: b ? b.r : (plan[i] ?? plan[plan.length - 1] ?? null), ok: false };
       });
-      return { ejId: e.id, nombre: e.nombre.trim(), nota: e.nota || '', descanso: e.descanso || u?.it.descanso || '', sets };
+      return { ejId: e.id, nombre: e.nombre.trim(), nota: e.nota || '', plan: e.reps || '', carga: e.carga || '', descanso: e.descanso || u?.it.descanso || '', sets };
     })
   };
   S.sesiones.push(s); guardar(); ir('/s/' + s.id);
@@ -1430,7 +1613,11 @@ function repetirUltimo(a){
   }
   const s = {
     id: uid(), alumnoId: a.id, rutinaId: ult.rutinaId, rutinaNombre: ult.rutinaNombre, fecha: hoy(), creado: Date.now(), fin: false, notas: '',
-    items: ult.items.map(i => ({ ejId: i.ejId, nombre: i.nombre, nota: i.nota || '', descanso: i.descanso || '', sets: i.sets.map(x => ({ p: x.p, r: x.r, ok: false })) }))
+    items: ult.items.map(i => {
+      const e = a.rutinas.find(r => r.id === ult.rutinaId)?.ejercicios.find(x => clave(x.nombre) === clave(i.nombre));
+      return { ejId: i.ejId, nombre: i.nombre, nota: e?.nota ?? i.nota ?? '', plan: e?.reps ?? i.plan ?? '', carga: e?.carga ?? i.carga ?? '',
+        descanso: i.descanso || '', sets: i.sets.map(x => ({ p: x.p, r: x.r, ok: false })) };
+    })
   };
   S.sesiones.push(s); guardar(); ir('/s/' + s.id);
 }
@@ -1480,6 +1667,27 @@ document.addEventListener('change', e => {
     if (v && v > 0) { S.cfg.paso = v; guardar(); toast(`Botón de peso: ±${fNum(v)} kg`); }
     else e.target.value = fNum(S.cfg.paso);
   }
+});
+$('#wordIn').addEventListener('change', async e => {
+  const f = e.target.files[0], a = alumno(e.target.dataset.a);
+  if (!f || !a) return;
+  let r;
+  try { r = await leerRutinaWord(await f.arrayBuffer()); }
+  catch (err) { alert('No se pudo leer el archivo. Tiene que ser un documento de Word (.docx) con la rutina en tablas.'); return; }
+  if (!r.dias.length) { alert('No encontré tablas con ejercicios en ese documento.'); return; }
+  const resumen = r.dias.map(d => `<li><b>${esc(d.nombre)}</b> · ${d.ejercicios.length} ejercicios</li>`).join('');
+  const d = await formulario({
+    titulo: 'Importar rutina', ok: 'Importar',
+    html: `${r.titulo ? `<p class="small muted" style="margin:0">${esc(r.titulo)}</p>` : ''}<ul class="small" style="margin:0;padding-left:18px">${resumen}</ul>`,
+    campos: a.rutinas.length ? [{ nombre: 'modo', etiqueta: `${a.nombre} ya tiene ${a.rutinas.length} ${a.rutinas.length === 1 ? 'día' : 'días'} de rutina`, tipo: 'select',
+      opciones: [['reemplazar', 'Reemplazarlos por estos'], ['agregar', 'Agregar estos a los actuales']] }] : []
+  });
+  if (!d) return;
+  if (d.modo === 'reemplazar') a.rutinas = [];
+  a.rutinas.push(...r.dias.map(x => ({ id: uid(), nombre: x.nombre, ejercicios: x.ejercicios })));
+  if (r.titulo) a.programa = r.titulo;
+  guardar(); pintar();
+  toast(`Rutina importada: ${r.dias.length} días`);
 });
 $('#fileIn').addEventListener('change', async e => {
   const f = e.target.files[0];
