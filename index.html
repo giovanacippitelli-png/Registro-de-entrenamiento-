@@ -130,7 +130,32 @@
   .li .t{flex:1;min-width:0;}
   .li .t b{display:block;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .li .t span{font-size:13px;color:var(--muted);}
-  .li .chev{color:var(--muted);width:18px;height:18px;flex:none;}
+  .chev{color:var(--muted);width:18px;height:18px;flex:none;}
+  button.li{width:100%;border-left:0;border-right:0;border-bottom:0;background:transparent;text-align:left;font:inherit;color:inherit;cursor:pointer;}
+  .elegir .list{max-height:55vh;overflow-y:auto;}
+
+  /* Pestañas de alumnos entrenando ahora */
+  .bar{flex-wrap:wrap;}
+  .tira{
+    display:flex;gap:8px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;
+    flex-basis:100%;margin:0 -12px;padding:2px 12px;
+  }
+  main > .tira{margin:0 -12px 12px;}
+  .tira::-webkit-scrollbar{display:none;}
+  .tab{
+    flex:none;display:flex;align-items:center;gap:8px;min-height:48px;padding:4px 12px 4px 4px;
+    border-radius:24px;border:1px solid var(--border);background:var(--panel);color:var(--text);
+    text-decoration:none;font:inherit;cursor:pointer;
+  }
+  .tab .av{width:38px;height:38px;font-size:13px;}
+  .tab .tt{display:flex;flex-direction:column;line-height:1.15;text-align:left;}
+  .tab .tt b{font-size:14px;font-weight:600;}
+  .tab .tt small{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;}
+  .tab.on{background:var(--primary);border-color:var(--primary);color:var(--on-primary);}
+  .tab.on .av{background:var(--on-primary);color:var(--primary);}
+  .tab.on .tt small{color:var(--on-primary);opacity:.85;}
+  .tab.add{padding:4px 14px;color:var(--primary);border-style:dashed;}
+  .tab.add svg{width:18px;height:18px;}
   .av{width:40px;height:40px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;background:var(--primary-soft);color:var(--primary);font-weight:700;font-size:15px;}
   .fab{
     position:fixed;right:max(16px,calc(50% - 304px));bottom:calc(20px + env(safe-area-inset-bottom));z-index:6;
@@ -234,6 +259,7 @@
     background:var(--text);color:var(--bg);padding:10px 16px;border-radius:12px;font-size:14px;
     opacity:0;pointer-events:none;transition:.2s;z-index:20;max-width:90vw;text-align:center;
   }
+  .actualizar{position:fixed;left:50%;transform:translateX(-50%);top:calc(12px + env(safe-area-inset-top));z-index:30;box-shadow:0 4px 14px rgba(20,22,60,.3);}
   .toast.on{opacity:1;transform:translateX(-50%) translateY(0);}
   .kv{display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--border);}
   .kv:first-of-type{border-top:0;}
@@ -410,6 +436,31 @@ function formulario({ titulo, campos = [], ok = 'Guardar', peligro, html = '' })
   });
 }
 
+// Lista para elegir una opción (alumno, día de rutina…), con buscador opcional.
+function elegir({ titulo, items, buscar }){
+  return new Promise(res => {
+    const fila = x => `<button type="button" class="li" data-id="${x.id}">
+      ${x.av ? `<span class="av">${esc(x.av)}</span>` : ''}
+      <span class="t"><b>${esc(x.t)}</b>${x.sub ? `<span>${esc(x.sub)}</span>` : ''}</span></button>`;
+    dlg.innerHTML = `<div class="dlg elegir"><h2>${esc(titulo)}</h2>
+      ${buscar ? '<input class="in" type="search" placeholder="Buscar…" autocomplete="off">' : ''}
+      <div class="list">${items.map(fila).join('') || '<div class="empty">No hay alumnos cargados.</div>'}</div>
+      <div class="btns"><span class="sp"></span><button type="button" class="btn ghost" data-v>Cancelar</button></div></div>`;
+    let listo = false;
+    const fin = v => { if (listo) return; listo = true; dlg.close(); res(v); };
+    const lista = dlg.querySelector('.list');
+    lista.onclick = e => { const b = e.target.closest('[data-id]'); if (b) fin(b.dataset.id); };
+    dlg.querySelector('[data-v]').onclick = () => fin(null);
+    const q = dlg.querySelector('input');
+    if (q) q.oninput = () => {
+      const k = clave(q.value);
+      lista.innerHTML = items.filter(x => !k || clave(x.t).includes(k)).map(fila).join('') || '<div class="empty">Sin resultados.</div>';
+    };
+    dlg.oncancel = e => { e.preventDefault(); fin(null); };
+    dlg.showModal();
+  });
+}
+
 /* ---------- Router ---------- */
 let rutaAnterior = '';
 let tras = []; // funciones a ejecutar después de pintar
@@ -428,18 +479,37 @@ function pintar(){
   else if (p[0] === 'ajustes') v = vAjustes();
   else if (!p.length) v = vInicio();
   if (v == null) { ir('/'); return; }
+  if (ruta !== rutaAnterior) scrolls[rutaAnterior] = window.scrollY;
   app.innerHTML = v;
-  if (ruta !== rutaAnterior) window.scrollTo(0, 0);
+  // Al volver a la sesión de un alumno, queda donde estaba.
+  if (ruta !== rutaAnterior) window.scrollTo(0, p[0] === 's' ? (scrolls[ruta] || 0) : 0);
   rutaAnterior = ruta;
   tras.forEach(f => f());
 }
+const scrolls = {};
 
-const barra = (titulo, { atras, accion = '', sub } = {}) => `
+const barra = (titulo, { atras, accion = '', sub, extra = '' } = {}) => `
   <header class="bar">
     ${atras != null ? `<a class="icon-btn" href="#${atras}" aria-label="Volver">${I.back}</a>` : ''}
     <div class="bar-t"><h1>${esc(titulo)}</h1>${sub ? `<div class="sub">${esc(sub)}</div>` : ''}</div>
-    ${accion}
+    ${accion}${extra}
   </header>`;
+
+// Pestañas con los alumnos que están entrenando ahora, para saltar de uno a otro.
+function tiraSesiones(actualId){
+  const abs = abiertas().filter(s => alumno(s.alumnoId)).sort((x, y) => x.creado - y.creado);
+  return `<nav class="tira" aria-label="Alumnos entrenando ahora">
+    ${abs.map(s => {
+      const a = alumno(s.alumnoId);
+      const total = s.items.reduce((t, i) => t + i.sets.length, 0);
+      const listas = s.items.reduce((t, i) => t + hechas(i).length, 0);
+      return `<a class="tab ${s.id === actualId ? 'on' : ''}" href="#/s/${s.id}" ${s.id === actualId ? 'aria-current="page"' : ''}>
+        <span class="av">${esc(iniciales(a.nombre))}</span>
+        <span class="tt"><b>${esc(a.nombre.split(/\s+/)[0])}</b><small>${listas}/${total}</small></span></a>`;
+    }).join('')}
+    <button class="tab add" data-act="sumarAlumno">${I.plus}<span class="tt"><b>Sumar</b></span></button>
+  </nav>`;
+}
 
 /* ---------- Vista: inicio (lista de alumnos) ---------- */
 let busqueda = '';
@@ -458,15 +528,7 @@ function vInicio(){
     if (q) q.oninput = () => { busqueda = q.value; $('#lista').innerHTML = listaAlumnos(); };
   });
   return barra('Alumnos', { accion: `<a class="icon-btn" href="#/ajustes" aria-label="Ajustes">${I.gear}</a>` }) +
-    abs.map(s => {
-      const a = alumno(s.alumnoId);
-      if (!a) return '';
-      const n = s.items.reduce((t, i) => t + hechas(i).length, 0);
-      return `<a class="banner live" href="#/s/${s.id}">
-        <div class="av">${esc(iniciales(a.nombre))}</div>
-        <div class="sp"><b>Sesión en curso · ${esc(a.nombre)}</b><span class="small">${esc(s.rutinaNombre)} · ${n} series cargadas</span></div>${I.chev}
-      </a>`;
-    }).join('') + aviso +
+    (abs.length ? `<h2 class="sec" style="margin-top:4px">Entrenando ahora</h2>${tiraSesiones(null)}` : '') + aviso +
     (S.alumnos.length ? `
       <div class="search"><input id="q" class="in" type="search" placeholder="Buscar alumno…" value="${esc(busqueda)}" autocomplete="off"></div>
       <div id="lista">${listaAlumnos()}</div>` : `
@@ -501,6 +563,7 @@ function vAlumno(id){
   for (const s of ses) if (!ultPorRutina[s.rutinaId]) ultPorRutina[s.rutinaId] = s.fecha;
   const ejs = new Map();
   for (const s of ses) for (const it of s.items) if (hechas(it).length && !ejs.has(clave(it.nombre))) ejs.set(clave(it.nombre), it.nombre);
+  const abierta = abiertas().find(s => s.alumnoId === a.id);
 
   return barra(a.nombre, { atras: '/', accion: `<button class="icon-btn" data-act="editarAlumno" data-a="${a.id}" aria-label="Editar datos">${I.edit}</button>` }) + `
     <div class="card perfil">
@@ -518,7 +581,7 @@ function vAlumno(id){
         <div class="t"><b>${esc(r.nombre)}</b>
           <span>${r.ejercicios.length} ejercicios${ultPorRutina[r.id] ? ` · última ${fFecha(ultPorRutina[r.id])}` : ''}</span></div>
         <a class="btn ghost sm" href="#/a/${a.id}/r/${r.id}">Editar</a>
-        <button class="btn primary" data-act="entrenar" data-a="${a.id}" data-r="${r.id}">Entrenar</button>
+        <button class="btn primary" data-act="entrenar" data-a="${a.id}" data-r="${r.id}">${abierta?.rutinaId === r.id ? 'Continuar' : 'Entrenar'}</button>
       </div>`).join('') || '<div class="card muted small">Todavía no tiene días de rutina. Agregá el primero.</div>'}
     <button class="btn ghost block" data-act="nuevoDia" data-a="${a.id}">${I.plus} Agregar día de rutina</button>
 
@@ -604,7 +667,8 @@ function vSesion(sid){
   const listas = s.items.reduce((t, i) => t + hechas(i).length, 0);
   return barra(a.nombre, {
     atras: `/a/${a.id}`, sub: s.rutinaNombre + (s.fin ? ' · sesión guardada' : ''),
-    accion: `<button class="icon-btn" data-act="borrarSesion" data-s="${s.id}" aria-label="Eliminar sesión" style="color:var(--danger)">${I.trash}</button>`
+    accion: `<button class="icon-btn" data-act="borrarSesion" data-s="${s.id}" aria-label="Eliminar sesión" style="color:var(--danger)">${I.trash}</button>`,
+    extra: s.fin ? '' : tiraSesiones(s.id)
   }) + `
     <div class="ses-head">
       <input id="sfecha" class="in" type="date" value="${s.fecha}" aria-label="Fecha">
@@ -660,6 +724,8 @@ function actualizarProgreso(s){
   const listas = s.items.reduce((t, i) => t + hechas(i).length, 0);
   $('#prog').textContent = `${listas}/${total} series`;
   $('#progbar').style.width = (total ? listas / total * 100 : 0) + '%';
+  const tab = $('.tab.on small');
+  if (tab) tab.textContent = `${listas}/${total}`;
 }
 const sesionActual = () => S.sesiones.find(x => x.id === location.hash.split('/')[2]);
 
@@ -951,27 +1017,31 @@ const A = {
     a.rutinas = a.rutinas.filter(x => x !== r); guardar(); ir('/a/' + a.id);
   },
   entrenar(el){
-    const a = alumno(el.dataset.a), r = a.rutinas.find(x => x.id === el.dataset.r);
+    const a = alumno(el.dataset.a);
+    iniciarSesion(a, a.rutinas.find(x => x.id === el.dataset.r));
+  },
+  // Suma otro alumno a los que están entrenando, sin cerrar la sesión actual.
+  async sumarAlumno(){
+    const enCurso = new Set(abiertas().map(s => s.alumnoId));
+    const id = await elegir({
+      titulo: 'Sumar alumno', buscar: true,
+      items: S.alumnos.slice().sort((x, y) => x.nombre.localeCompare(y.nombre, 'es')).map(a => ({
+        id: a.id, t: a.nombre, av: iniciales(a.nombre),
+        sub: enCurso.has(a.id) ? 'Entrenando ahora' : (a.rutinas.length ? a.rutinas.map(r => r.nombre).join(' · ') : 'Sin rutina cargada')
+      }))
+    });
+    if (!id) return;
+    const a = alumno(id);
     const abierta = abiertas().find(s => s.alumnoId === a.id);
-    if (abierta) {
-      if (abierta.rutinaId === r.id) return ir('/s/' + abierta.id);
-      if (!confirm(`${a.nombre} tiene una sesión de “${abierta.rutinaNombre}” sin terminar. ¿Descartarla y empezar “${r.nombre}”?`)) return ir('/s/' + abierta.id);
-      S.sesiones = S.sesiones.filter(s => s !== abierta);
+    if (abierta) return ir('/s/' + abierta.id);
+    if (!a.rutinas.length) { toast('Primero armale una rutina'); return ir('/a/' + a.id); }
+    let r = a.rutinas[0];
+    if (a.rutinas.length > 1) {
+      const rid = await elegir({ titulo: `${a.nombre}: ¿qué día entrena?`, items: a.rutinas.map(x => ({ id: x.id, t: x.nombre, sub: `${x.ejercicios.length} ejercicios` })) });
+      if (!rid) return;
+      r = a.rutinas.find(x => x.id === rid);
     }
-    const f = hoy();
-    const s = {
-      id: uid(), alumnoId: a.id, rutinaId: r.id, rutinaNombre: r.nombre, fecha: f, creado: Date.now(), fin: false, notas: '',
-      // Cada serie arranca con lo que hizo la última vez: si repite, solo toca ✓.
-      items: r.ejercicios.filter(e => e.nombre.trim()).map(e => {
-        const u = ultimoDe(a.id, e.nombre, null, f);
-        const sets = Array.from({ length: Math.max(1, e.series || 1) }, (_, i) => {
-          const b = u ? (u.sets[i] || u.sets[u.sets.length - 1]) : null;
-          return { p: b ? b.p : null, r: b ? b.r : null, ok: false };
-        });
-        return { ejId: e.id, nombre: e.nombre.trim(), nota: e.nota || '', sets };
-      })
-    };
-    S.sesiones.push(s); guardar(); ir('/s/' + s.id);
+    iniciarSesion(a, r);
   },
   marcar(el){
     const s = sesionActual(), { fila, x } = ubicarSet(s, el);
@@ -1020,8 +1090,10 @@ const A = {
     if (listas < total && !confirm(`Hay ${total - listas} series sin marcar (✓). No se van a guardar. ¿Terminar igual?`)) return;
     s.items = s.items.map(i => ({ ...i, sets: hechas(i) })).filter(i => i.sets.length);
     s.fin = true; guardarYa();
-    toast('Sesión guardada ✓');
-    ir('/a/' + s.alumnoId);
+    toast(`Sesión de ${alumno(s.alumnoId).nombre.split(/\s+/)[0]} guardada ✓`);
+    // Si hay otros alumnos entrenando, sigue con el siguiente.
+    const otra = abiertas().filter(x => alumno(x.alumnoId)).sort((x, y) => x.creado - y.creado)[0];
+    ir(otra ? '/s/' + otra.id : '/a/' + s.alumnoId);
   },
   borrarSesion(el){
     const s = S.sesiones.find(x => x.id === el.dataset.s);
@@ -1050,6 +1122,28 @@ const A = {
     S = estadoVacio(); guardarYa(); ir('/');
   }
 };
+function iniciarSesion(a, r){
+  const abierta = abiertas().find(s => s.alumnoId === a.id);
+  if (abierta) {
+    if (abierta.rutinaId === r.id) return ir('/s/' + abierta.id);
+    if (!confirm(`${a.nombre} tiene una sesión de “${abierta.rutinaNombre}” sin terminar. ¿Descartarla y empezar “${r.nombre}”?`)) return ir('/s/' + abierta.id);
+    S.sesiones = S.sesiones.filter(s => s !== abierta);
+  }
+  const f = hoy();
+  const s = {
+    id: uid(), alumnoId: a.id, rutinaId: r.id, rutinaNombre: r.nombre, fecha: f, creado: Date.now(), fin: false, notas: '',
+    // Cada serie arranca con lo que hizo la última vez: si repite, solo toca ✓.
+    items: r.ejercicios.filter(e => e.nombre.trim()).map(e => {
+      const u = ultimoDe(a.id, e.nombre, null, f);
+      const sets = Array.from({ length: Math.max(1, e.series || 1) }, (_, i) => {
+        const b = u ? (u.sets[i] || u.sets[u.sets.length - 1]) : null;
+        return { p: b ? b.p : null, r: b ? b.r : null, ok: false };
+      });
+      return { ejId: e.id, nombre: e.nombre.trim(), nota: e.nota || '', sets };
+    })
+  };
+  S.sesiones.push(s); guardar(); ir('/s/' + s.id);
+}
 function rutinaActual(){
   const p = location.hash.split('/');
   return alumno(p[2])?.rutinas.find(r => r.id === p[4]);
@@ -1099,7 +1193,19 @@ $('#fileIn').addEventListener('change', async e => {
   try { S = normalizar(await Store.get('state')); } catch (e) { S = estadoVacio(); }
   if (navigator.storage?.persist) navigator.storage.persist().catch(() => {});
   pintar();
-  if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(() => {});
+  if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+    // Si llega una versión nueva de la app, ofrece recargar (los datos no se tocan).
+    const habia = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!habia || $('#actualizar')) return;
+      const b = document.createElement('button');
+      b.id = 'actualizar'; b.className = 'btn primary actualizar';
+      b.textContent = 'Hay una versión nueva · Actualizar';
+      b.onclick = async () => { await guardarYa(); location.reload(); };
+      document.body.appendChild(b);
+    });
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  }
 })();
 </script>
 </body>
